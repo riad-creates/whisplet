@@ -26,33 +26,25 @@ func render(size: Int, to url: URL) throws {
         xRadius: dimension * 0.23,
         yRadius: dimension * 0.23
     )
-    NSColor(calibratedRed: 0.067, green: 0.047, blue: 0.039, alpha: 1).setFill()
+    NSColor(calibratedRed: 0.965, green: 0.965, blue: 0.99, alpha: 1).setFill()
     tile.fill()
-
-    let glowRect = NSRect(
-        x: dimension * 0.16,
-        y: dimension * 0.13,
-        width: dimension * 0.68,
-        height: dimension * 0.68
-    )
-    let glow = NSGradient(colors: [
-        NSColor(calibratedRed: 1.0, green: 0.38, blue: 0.11, alpha: 0.92),
-        NSColor(calibratedRed: 0.65, green: 0.12, blue: 0.025, alpha: 0.16),
-        NSColor.clear,
-    ])!
-    glow.draw(in: NSBezierPath(ovalIn: glowRect), angle: -90)
-
     let mark = NSBezierPath()
-    mark.lineWidth = max(1.5, dimension * 0.075)
+    mark.lineWidth = max(1.0, dimension * 0.052)
     mark.lineCapStyle = .round
-    mark.move(to: NSPoint(x: dimension * 0.29, y: dimension * 0.49))
-    mark.curve(
-        to: NSPoint(x: dimension * 0.71, y: dimension * 0.49),
-        controlPoint1: NSPoint(x: dimension * 0.39, y: dimension * 0.71),
-        controlPoint2: NSPoint(x: dimension * 0.61, y: dimension * 0.27)
-    )
-    NSColor(calibratedRed: 1.0, green: 0.84, blue: 0.70, alpha: 1).setStroke()
+    mark.move(to: NSPoint(x: dimension * 0.22, y: dimension * 0.5))
+    mark.curve(to: NSPoint(x: dimension * 0.43, y: dimension * 0.5),
+        controlPoint1: NSPoint(x: dimension * 0.29, y: dimension * 0.815),
+        controlPoint2: NSPoint(x: dimension * 0.36, y: dimension * 0.185))
+    mark.curve(to: NSPoint(x: dimension * 0.64, y: dimension * 0.5),
+        controlPoint1: NSPoint(x: dimension * 0.50, y: dimension * 0.815),
+        controlPoint2: NSPoint(x: dimension * 0.57, y: dimension * 0.185))
+    NSColor(calibratedRed: 0.31, green: 0.29, blue: 0.78, alpha: 1).setStroke()
     mark.stroke()
+    let cursor = NSBezierPath(roundedRect: NSRect(x: dimension * 0.742,
+        y: dimension * 0.318, width: dimension * 0.049, height: dimension * 0.364),
+        xRadius: dimension * 0.0245, yRadius: dimension * 0.0245)
+    NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.18, alpha: 1).setFill()
+    cursor.fill()
 
     image.unlockFocus()
     guard let tiff = image.tiffRepresentation,

@@ -1,4 +1,4 @@
-// Phonon — native macOS app plus a bottom-anchored dictation capsule.
+// Whisplet — native macOS app plus a bottom-anchored dictation capsule.
 //
 // Idle: outlined pill above the Dock. Recording expands into a live waveform.
 // Done → type text and return to idle.
@@ -160,7 +160,7 @@ struct ModelStartupView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(state.ready ? "Phonon is ready" : "Preparing Phonon")
+                    Text(state.ready ? "Whisplet is ready" : "Preparing Whisplet")
                         .font(.title2.weight(.semibold))
                     Text("Models are warmed with real demo requests before dictation.")
                         .font(.subheadline)
@@ -173,7 +173,7 @@ struct ModelStartupView: View {
 
             ProgressView(value: state.progress)
                 .progressViewStyle(.linear)
-                .tint(EmberTheme.accent)
+                .tint(AppTheme.accent)
 
             VStack(spacing: 0) {
                 ForEach(state.streams) { stream in
@@ -208,22 +208,22 @@ struct ModelStartupView: View {
         }
         .padding(24)
         .frame(width: 520)
-        .foregroundStyle(EmberTheme.text)
+        .foregroundStyle(AppTheme.text)
         .background(
-            EmberTheme.surface,
+            AppTheme.surface,
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(EmberTheme.border.opacity(0.8), lineWidth: 1)
+                .stroke(AppTheme.border.opacity(0.8), lineWidth: 1)
         )
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
     }
 
     private func color(for state: String) -> Color {
         switch state.lowercased() {
-        case "ready": return EmberTheme.healthy
-        case "loading": return EmberTheme.accent
+        case "ready": return AppTheme.healthy
+        case "loading": return AppTheme.accent
         case "error": return .red
         case "missing": return .secondary
         default: return .secondary
@@ -547,23 +547,23 @@ struct PillView: View {
             Capsule(style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color(white: 0.10), Color(white: 0.035)],
+                        colors: [AppTheme.surface, AppTheme.surfaceRaised],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
             Capsule(style: .continuous)
-                .strokeBorder(.white.opacity(state.mode == .idle ? 0.48 : 0.24), lineWidth: 1)
+                .strokeBorder(AppTheme.border, lineWidth: 1)
 
             if state.mode == .listening {
                 HStack(spacing: 11) {
                     Circle()
-                        .fill(Color(red: 1, green: 0.48, blue: 0.25))
+                        .fill(AppTheme.accent)
                         .frame(width: 5, height: 5)
                     HStack(spacing: 2) {
                         ForEach(state.waveform.indices, id: \.self) { index in
                             Capsule()
-                                .fill(.white.opacity(0.45 + 0.55 * Double(index) / 23))
+                                .fill(AppTheme.accent.opacity(0.45 + 0.55 * Double(index) / 23))
                                 .frame(width: 3, height: 3 + 23 * sqrt(state.waveform[index]))
                         }
                     }
@@ -576,26 +576,26 @@ struct PillView: View {
                     TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
                         Circle()
                             .trim(from: 0, to: 0.72)
-                            .stroke(.white.opacity(0.85), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                            .stroke(AppTheme.accent, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                             .frame(width: 12, height: 12)
                             .rotationEffect(.degrees(reduceMotion ? 0 :
                                 context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * 360))
                     }
                     Text("Processing")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(AppTheme.text)
                 }
                 .transition(.opacity)
             } else if state.mode == .notice {
                 Text(state.notice)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(AppTheme.text)
                     .lineLimit(1)
                     .transition(.opacity)
             }
         }
         .frame(width: size.width, height: size.height)
-        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
         .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.84), value: state.mode)
         .padding(.bottom, 6)
         .frame(width: 200, height: 52, alignment: .bottom)
@@ -606,9 +606,9 @@ struct PillView: View {
 
     private var accessibilityLabel: String {
         switch state.mode {
-        case .hidden, .idle: return "Phonon ready"
-        case .listening: return "Phonon recording"
-        case .working: return "Phonon processing"
+        case .hidden, .idle: return "Whisplet ready"
+        case .listening: return "Whisplet recording"
+        case .working: return "Whisplet processing"
         case .notice: return state.notice
         }
     }
@@ -1183,7 +1183,7 @@ enum Typer {
         guard AXIsProcessTrusted() else {
             throw NSError(
                 domain: "PhononBar", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Grant Accessibility to PhononBar"])
+                userInfo: [NSLocalizedDescriptionKey: "Grant Accessibility to Whisplet"])
         }
 
         let pasteboard = NSPasteboard.general
@@ -1568,7 +1568,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Phonon model status"
+        window.title = "Whisplet model status"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -1595,28 +1595,29 @@ final class AppController: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Phonon"
+        window.title = AppBrand.name
+        window.titleVisibility = .hidden
         // A programmatically created NSWindow releases itself when closed, which
         // ARC does not account for, so `mainWindow` would keep pointing at freed
         // memory and the next reopen would message it and crash.
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = EmberTheme.nsBackground
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = AppTheme.nsBackground
+        window.appearance = NSAppearance(named: .aqua)
         window.contentViewController = NSHostingController(rootView: root)
         window.setContentSize(NSSize(width: 980, height: 680))
-        window.minSize = NSSize(width: 900, height: 620)
+        window.minSize = NSSize(width: 980, height: 708)
         window.center()
         mainWindow = window
     }
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "ϕ"
-        item.button?.toolTip = "Phonon — hold ⌥ to dictate"
+        item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: AppBrand.name)
+        item.button?.toolTip = "Whisplet — local dictation"
         let menu = NSMenu()
         menu.addItem(
-            NSMenuItem(title: "Open Phonon…", action: #selector(showMainWindow), keyEquivalent: ","))
+            NSMenuItem(title: "Open Whisplet…", action: #selector(showMainWindow), keyEquivalent: ","))
         menu.addItem(.separator())
         menu.addItem(makeRecordingMenuItem())
         let previewItem = NSMenuItem(
@@ -2407,7 +2408,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         else {
             appStore.inputMonitoringAvailable = false
             statusItem?.button?.toolTip =
-                "Phonon — Ctrl+Space ready; grant Input Monitoring for hold ⌥"
+                "Whisplet — Ctrl+Space ready; grant Input Monitoring for hold ⌥"
             NSLog("phonon: Right-Option unavailable (Input Monitoring not granted)")
             return
         }
@@ -2501,9 +2502,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         let mainMenu = NSMenu()
 
         let appItem = NSMenuItem()
-        let appMenu = NSMenu(title: "Phonon")
+        let appMenu = NSMenu(title: AppBrand.name)
         appMenu.addItem(
-            withTitle: "About Phonon",
+            withTitle: "About Whisplet",
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         let settings = NSMenuItem(
@@ -2513,10 +2514,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         appMenu.addItem(makeRecordingMenuItem())
         appMenu.addItem(.separator())
         appMenu.addItem(
-            withTitle: "Hide Phonon", action: #selector(NSApplication.hide(_:)),
+            withTitle: "Hide Whisplet", action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h")
         appMenu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit Phonon", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Whisplet", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         appMenu.addItem(quitItem)
         appItem.submenu = appMenu
@@ -2560,12 +2561,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         let stamp = DateFormatter.localizedString(
             from: manifest.savedAt, dateStyle: .medium, timeStyle: .short)
         let alert = NSAlert()
-        alert.messageText = "Restore your Phonon data?"
+        alert.messageText = "Restore your Whisplet data?"
         alert.informativeText =
             "This Mac has a backup from \(stamp) holding "
             + "\(manifest.dictionaryEntries) dictionary entries and "
-            + "\(manifest.historyItems) recordings, but Phonon's data folder is "
-            + "empty. Uninstalling removes everything under ~/Library, so Phonon "
+            + "\(manifest.historyItems) recordings, but Whisplet's data folder is "
+            + "empty. Uninstalling removes everything under ~/Library, so Whisplet "
             + "keeps a copy of the small irreplaceable files in ~/.phonon."
         alert.addButton(withTitle: "Restore")
         alert.addButton(withTitle: "Not Now")

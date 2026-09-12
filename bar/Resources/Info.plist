@@ -3,30 +3,30 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Phonon</string>
+	<string>Whisplet</string>
 	<key>CFBundleExecutable</key>
 	<string>PhononBar</string>
 	<key>CFBundleIconFile</key>
 	<string>Phonon.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.infatoshi.phonon</string>
+	<string>com.tobiwsa.whisplet</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Phonon</string>
+	<string>Whisplet</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.7</string>
+	<string>0.2.0</string>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>7</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Phonon records speech while you hold its dictation shortcut.</string>
+	<string>Whisplet records speech while you hold its dictation shortcut.</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Phonon reads visible technical terms locally to improve dictation accuracy.</string>
+	<string>Whisplet reads visible technical terms locally to improve dictation accuracy.</string>
 </dict>
 </plist>

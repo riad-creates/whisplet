@@ -236,7 +236,7 @@ final class AppDataTests: XCTestCase {
         XCTAssertTrue(PermissionGuide.screenRecording.detail.contains("screen context"))
         XCTAssertEqual(
             PermissionGuide.inputMonitoring.manualInstructions,
-            "Click + in System Settings, type Phonon, press Return, then turn Phonon on.")
+            "Click + in System Settings and select this app, then turn its switch on. Existing local installs may still be listed as Phonon Local.")
     }
 
     func testMicrophonePermissionPresentationMatchesTCCState() {

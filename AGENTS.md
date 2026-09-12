@@ -1,0 +1,73 @@
+# Whisplet: install, update and develop
+
+Whisplet is an Apple Silicon macOS dictation app based on GPL-3.0 Phonon.
+The visible brand is Whisplet; internal `phonon` binary names and data paths are
+kept for compatibility. No app account, subscription, cloud inference or paid
+Apple Developer membership is required for a local source build.
+
+## Install for a user
+
+1. Read `README.md` and `docs/INSTALL.md`. Inspect scripts before running them.
+2. Verify native arm64 macOS 14+ (`uname -m`, `sw_vers`), Apple Command Line
+   Tools (`xcrun --find swift`), Rust (`cargo --version`) and uv (`uv --version`).
+   Follow the official installation links in the guide for missing tools.
+   Do not enroll the user in paid services or accept license terms for them.
+3. Run `bash scripts/install.sh --check`. This checks prerequisites and identifies
+   the destination/signing strategy without building or replacing the app.
+4. Run `bash scripts/install.sh`. It builds release binaries, creates a signed
+   bundle, verifies it, backs up any prior app and installs it. If the existing
+   app is running, quit it using its menu and rerun. Do not kill a live dictation.
+5. Open the exact installed path printed by the installer. New installations
+   default to `~/Applications/Whisplet.app` and `com.tobiwsa.whisplet`.
+   The original development install stays at `/Applications/Phonon Local.app`
+   with `local.tobi.phonon`; do not rename or replace that identity.
+6. Guide the user through Microphone, Accessibility and Input Monitoring in
+   System Settings. These decisions belong to the user. Never modify TCC.db,
+   disable Gatekeeper/SIP, strip quarantine, or reset other apps' permissions.
+7. Wait for the first model download and warmup. Test a short dictation into a
+   disposable text field. Parakeet is used; S1 cleanup starts off. Saved recording
+   history is opt-in. Select the actual microphone in Settings.
+8. To use F5, select **Settings → Dictation shortcut → F5 hold**. It records until
+   release. Apple may map the physical F5 to system Dictation: use Fn+F5 or change
+   Keyboard → Keyboard Shortcuts → Function Keys to standard function keys.
+   Preserve the user's existing shortcut unless they requested a change.
+
+## Update
+
+In the original clone, run `bash scripts/update.sh`. It refuses a dirty checkout,
+uses `git pull --ff-only` on the current branch's upstream, then rebuilds and
+installs. Do not reset, force-push or discard user changes to make an update work.
+If a branch has no upstream, inspect `git remote -v` and remote branches first.
+The public release branch is `main`; don't invent a remote or silently switch a
+working development checkout. There is no background auto-updater yet.
+
+The installer touches the app bundle only. Never delete or commit:
+- `~/Library/Application Support/Phonon/` (settings, dictionary, recording corpus)
+- `~/.phonon/backup`, `~/.cache/huggingface`, uv/Python caches, or app logs
+- `.phonon-local-signing-identity` / `.whisplet-signing-identity`
+- private keys, tokens, recordings or transcripts from someone's machine
+
+Keep the installed bundle ID, path and signing identity stable. The installer
+saves its chosen local identity. A certificate-backed build can retain a stable
+identity; ad hoc signing is free but permission grants can need renewal on a
+rebuild. Do not silently replace a missing saved certificate with ad hoc signing.
+Developer ID/notarization for prebuilt distribution is a separate, optional path.
+
+## Development
+
+- Keep dictation local and account-free. S1 stays optional and off by default;
+  preserve explicit saved preferences. Preserve original GPL attribution.
+- SwiftUI/AppKit UI: `bar/Sources/`; Rust engine: `crates/`; MLX sidecars:
+  `sidecar/`; pinned model/runtime versions: ASR/LLM crate constants.
+- Use `swift test --disable-sandbox --package-path bar` for native changes,
+  `cargo test --workspace` for engine changes, and the relevant Python tests for
+  sidecar changes. Metal inference needs a real Apple Silicon Mac.
+- `bash scripts/package-local.sh` rebuilds the established development bundle.
+  `bash scripts/install.sh` is the portable build/install entry point.
+- Website is the existing Next.js static export in `website/`. Use `npm ci` if
+  dependencies are absent, `npm run lint`, `npm test`, and preserve its lockfile.
+- Use fabricated fixtures for previews. Never publish real user recordings or
+  transcripts in the website, repository, tests or benchmark reports.
+- Work on `codex/…` branches; commit completed changes in coherent increments.
+  Describe actual validation and limits; don't claim a physical hotkey or
+  microphone was tested based only on unit tests.

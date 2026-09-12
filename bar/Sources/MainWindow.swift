@@ -2,25 +2,8 @@ import AppKit
 import AVFoundation
 import SwiftUI
 
-enum EmberTheme {
-    static let background = Color(red: 0.067, green: 0.047, blue: 0.039)
-    static let sidebar = Color(red: 0.094, green: 0.063, blue: 0.049)
-    static let surface = Color(red: 0.129, green: 0.086, blue: 0.067)
-    static let surfaceRaised = Color(red: 0.165, green: 0.106, blue: 0.075)
-    static let border = Color(red: 0.31, green: 0.176, blue: 0.11)
-    static let text = Color(red: 1.0, green: 0.957, blue: 0.925)
-    static let muted = Color(red: 0.72, green: 0.61, blue: 0.55)
-    static let accent = Color(red: 1.0, green: 0.35, blue: 0.12)
-    static let accentSoft = Color(red: 0.235, green: 0.102, blue: 0.045)
-    static let warm = Color(red: 0.965, green: 0.65, blue: 0.30)
-    static let healthy = Color(red: 0.45, green: 0.78, blue: 0.60)
-
-    static let nsBackground = NSColor(
-        calibratedRed: 0.067, green: 0.047, blue: 0.039, alpha: 1)
-}
-
 enum NativeAppPage: String, CaseIterable, Identifiable {
-    case home = "Home"
+    case home = "Dictation"
     case history = "History"
     case dictionary = "Dictionary"
     case settings = "Settings"
@@ -28,7 +11,7 @@ enum NativeAppPage: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var symbol: String {
         switch self {
-        case .home: return "house"
+        case .home: return "mic"
         case .history: return "clock.arrow.circlepath"
         case .dictionary: return "text.book.closed"
         case .settings: return "gearshape"
@@ -59,13 +42,11 @@ struct PhononMainView: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 10) {
-                    Image(systemName: "waveform.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(EmberTheme.accent)
-                    Text("Phonon").font(.headline)
+                    WhispletMark().frame(width: 32, height: 32)
+                    Text(AppBrand.name).font(.system(size: 22, weight: .semibold, design: .rounded))
                 }
                 .padding(.horizontal, 14)
-                .padding(.bottom, 14)
+                .padding(.bottom, 26)
 
                 ForEach(NativeAppPage.allCases) { candidate in
                     Button {
@@ -74,16 +55,16 @@ struct PhononMainView: View {
                         Label(candidate.rawValue, systemImage: candidate.symbol)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 12)
                             .contentShape(Rectangle())
                             .background(
-                                page == candidate ? EmberTheme.accentSoft : .clear,
+                                page == candidate ? AppTheme.accentSoft : .clear,
                                 in: RoundedRectangle(cornerRadius: 7)
                             )
                             .overlay {
                                 if page == candidate {
                                     RoundedRectangle(cornerRadius: 7)
-                                        .stroke(EmberTheme.border.opacity(0.7), lineWidth: 1)
+                                        .stroke(AppTheme.border.opacity(0.7), lineWidth: 1)
                                 }
                             }
                     }
@@ -91,23 +72,24 @@ struct PhononMainView: View {
                 }
                 Spacer()
             }
-            .padding(10)
-            .frame(width: 190)
-            .background(EmberTheme.sidebar)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 28)
+            .frame(width: 210)
+            .background(AppTheme.sidebar)
 
             Divider()
 
             detailView
             .frame(minWidth: 700, maxWidth: .infinity, maxHeight: .infinity)
-            .background(EmberTheme.background)
+            .background(AppTheme.background)
         }
-        .frame(width: 980, height: 680)
-        .foregroundStyle(EmberTheme.text)
-        .background(EmberTheme.background)
-        .tint(EmberTheme.accent)
-        .preferredColorScheme(.dark)
+        .frame(minWidth: 980, minHeight: 680)
+        .foregroundStyle(AppTheme.text)
+        .background(AppTheme.background)
+        .tint(AppTheme.accent)
+        .preferredColorScheme(.light)
         .alert(
-            "Phonon",
+            AppBrand.name,
             isPresented: Binding(
                 get: { store.lastError != nil },
                 set: { if !$0 { store.lastError = nil } }
@@ -138,7 +120,7 @@ struct PhononMainView: View {
     private var detailView: AnyView {
         switch page {
         case .home:
-            return AnyView(HomeView(store: store, onSettingsChanged: onSettingsChanged))
+            return AnyView(HomeView(store: store, onOpenHistory: { page = .history }, onOpenSettings: { page = .settings }))
         case .history:
             return AnyView(HistoryView(store: store))
         case .dictionary:
@@ -156,73 +138,135 @@ struct PhononMainView: View {
 
 struct HomeView: View {
     @ObservedObject var store: NativeAppStore
-    let onSettingsChanged: () -> Void
+    let onOpenHistory: () -> Void
+    let onOpenSettings: () -> Void
+    @StateObject private var playback = RecordingPlayback()
+
+    private var shortcut: String {
+        switch store.settings.shortcutMode {
+        case "f5", "f5_and_control_space": return "F5"
+        case "fn", "fn_and_control_space": return "fn"
+        case "control_space": return "⌃ Space"
+        default: return "Right ⌥"
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 14) {
-                    StatTile(
-                        value: "\(store.usage.wordsPerMinute)",
-                        label: "voice WPM",
-                        symbol: "speedometer"
-                    )
-                    StatTile(
-                        value: "\(store.usage.wordsToday)",
-                        label: "words today",
-                        symbol: "sun.max.fill"
-                    )
-                    StatTile(
-                        value: "\(store.usage.words)",
-                        label: "total words",
-                        symbol: "text.word.spacing"
-                    )
-                }
-
-                HStack(alignment: .top, spacing: 14) {
-                    MicrophonePriorityCard(
-                        store: store,
-                        onSettingsChanged: onSettingsChanged
-                    )
-                    PermissionSummary(store: store)
+            VStack(alignment: .leading, spacing: 26) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Dictation").font(.system(size: 28, weight: .semibold))
+                        Text("A little less typing. A little more you.")
+                            .font(.system(size: 14)).foregroundStyle(AppTheme.muted)
+                    }
+                    Spacer()
+                    Label(store.engineReady ? "Ready" : "Preparing", systemImage: "circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.engineReady ? AppTheme.healthy : AppTheme.muted)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(AppTheme.surface, in: Capsule())
                 }
 
                 Card {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Your activity").font(.headline)
-                        HStack(spacing: 28) {
-                            MetricColumn(
-                                label: "Dictations", value: "\(store.usage.recordings)")
-                            MetricColumn(
-                                label: "Speaking time",
-                                value: Self.duration(store.usage.speakingMilliseconds))
-                            MetricColumn(
-                                label: "Average length",
-                                value: "\(store.usage.averageWordsPerRecording) words")
-                            MetricColumn(
-                                label: "Dictionary repairs",
-                                value: "\(store.usage.dictionaryFixes)")
-                            MetricColumn(
-                                label: "Active days", value: "\(store.usage.activeDays)")
+                    VStack(alignment: .leading, spacing: 22) {
+                        HStack(spacing: 24) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Speak. It's already written.")
+                                    .font(.system(size: 23, weight: .medium))
+                                Text(store.settings.shortcutMode == "control_space"
+                                    ? "Press to start, speak, then press again to insert."
+                                    : "Hold your shortcut, speak, then release to insert.")
+                                    .font(.system(size: 14)).foregroundStyle(AppTheme.muted)
+                            }
+                            Spacer(minLength: 8)
+                            Text(shortcut)
+                                .font(.system(size: 21, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 22).frame(height: 62)
+                                .background(AppTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 13))
+                                .overlay(RoundedRectangle(cornerRadius: 13).stroke(AppTheme.border, lineWidth: 1))
                         }
+                        Divider()
+                        HStack(spacing: 16) {
+                            Label("On your Mac", systemImage: "lock.shield")
+                            Label(store.settings.aiCleanup ? "Cleanup on" : "Cleanup off", systemImage: "text.badge.checkmark")
+                            Spacer()
+                            Button("Change shortcut", action: onOpenSettings).buttonStyle(.plain)
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                        .font(.system(size: 12)).foregroundStyle(AppTheme.muted)
+                    }.padding(8)
+                }
+
+                HStack(spacing: 14) {
+                    StatTile(value: "\(store.usage.wordsToday)", label: "words today", symbol: "text.word.spacing")
+                    StatTile(value: "\(store.usage.wordsPerMinute)", label: "words per minute", symbol: "speedometer")
+                    StatTile(value: "\(store.usage.recordings)", label: "dictations", symbol: "waveform")
+                }
+
+                if !store.microphonePermission || !store.accessibilityPermission {
+                    PermissionSummary(store: store)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Recent dictations").font(.system(size: 16, weight: .semibold))
+                        Spacer()
+                        Button("View history", action: onOpenHistory).buttonStyle(.plain)
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                    if store.history.isEmpty {
+                        Card {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Your next thought starts here.").font(.headline)
+                                Text(store.settings.localHistory
+                                    ? "Your saved dictations will appear here."
+                                    : "Recording history is off. You can enable it in Settings.")
+                                    .foregroundStyle(AppTheme.muted)
+                            }.padding(.vertical, 16)
+                        }
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(store.history.prefix(3))) { item in
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text(item.displayText).font(.system(size: 14)).lineSpacing(5).lineLimit(3)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    HStack {
+                                        Text(item.date.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.system(size: 12)).foregroundStyle(AppTheme.muted)
+                                        Spacer()
+                                        Button {
+                                            do { try playback.toggle(item) }
+                                            catch { store.lastError = "This recording could not be played." }
+                                        } label: {
+                                            Image(systemName: playback.playingID == item.id ? "stop.fill" : "play")
+                                        }
+                                        .help(playback.playingID == item.id ? "Stop playback" : "Play recording")
+                                        .accessibilityLabel(playback.playingID == item.id ? "Stop playback" : "Play recording")
+                                        Button {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(item.displayText, forType: .string)
+                                        } label: { Image(systemName: "doc.on.doc") }
+                                        .help("Copy transcript").accessibilityLabel("Copy transcript")
+                                    }.buttonStyle(.borderless)
+                                }.padding(20)
+                                if item.id != store.history.prefix(3).last?.id { Divider().padding(.horizontal, 20) }
+                            }
+                        }
+                        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
                     }
                 }
-            }
-            .padding(28)
+            }.padding(30)
         }
-        .navigationTitle("Home")
         .onAppear { store.refreshPermissions() }
-    }
-
-    private static func duration(_ milliseconds: UInt64) -> String {
-        let totalSeconds = milliseconds / 1_000
-        if totalSeconds < 60 { return "\(totalSeconds)s" }
-        return "\(totalSeconds / 60)m \(totalSeconds % 60)s"
+        .onDisappear { playback.stop() }
     }
 }
 
 struct HistoryView: View {
     @ObservedObject var store: NativeAppStore
+    @StateObject private var playback = RecordingPlayback()
     @State private var query = ""
     @State private var selectedID: String?
     @State private var intendedText = ""
@@ -262,7 +306,7 @@ struct HistoryView: View {
                         .tag(item.id)
                     }
                     .scrollContentBackground(.hidden)
-                    .background(EmberTheme.background)
+                    .background(AppTheme.background)
                 }
                 .frame(minWidth: 280, idealWidth: 330)
 
@@ -279,6 +323,10 @@ struct HistoryView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                     Spacer()
+                                    Button(playback.playingID == item.id ? "Stop" : "Play") {
+                                        do { try playback.toggle(item) }
+                                        catch { store.lastError = "This recording could not be played." }
+                                    }
                                     Button("Copy") {
                                         NSPasteboard.general.clearContents()
                                         NSPasteboard.general.setString(item.displayText, forType: .string)
@@ -299,7 +347,7 @@ struct HistoryView: View {
                                         .font(.body)
                                         .frame(minHeight: 90)
                                         .padding(6)
-                                        .background(EmberTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
+                                        .background(AppTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
                                     HStack {
                                         Text("Saving this creates ground truth for future evaluation.")
                                             .font(.caption)
@@ -339,6 +387,7 @@ struct HistoryView: View {
         .onAppear {
             if selectedID == nil { selectedID = filtered.first?.id }
         }
+        .onDisappear { playback.stop() }
         .confirmationDialog(
             "Move this recording to Trash?", isPresented: Binding(
                 get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
@@ -409,7 +458,7 @@ struct DictionaryView: View {
                         .padding(.vertical, 4)
                     }
                     .scrollContentBackground(.hidden)
-                    .background(EmberTheme.background)
+                    .background(AppTheme.background)
                 }
                 .frame(minWidth: 360, idealWidth: 430)
 
@@ -489,42 +538,74 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Settings").font(.system(size: 28, weight: .semibold))
+                SettingsSection("Shortcut") {
+                    Picker("Active shortcut", selection: Binding(
+                        get: { store.settings.shortcutMode },
+                        set: { value in
+                            store.updateSettings { $0.shortcutMode = value }
+                            onSettingsChanged()
+                        }
+                    )) {
+                        Text("F5 hold").tag("f5")
+                        Text("F5 hold + Control Space toggle").tag("f5_and_control_space")
+                        Text("Right Option hold + Control Space toggle").tag("both")
+                        Text("Right Option hold").tag("right_option")
+                        Text("Globe (fn) hold").tag("fn")
+                        Text("Globe (fn) hold + Control Space toggle")
+                            .tag("fn_and_control_space")
+                        Text("Control Space toggle").tag("control_space")
+                    }
+                    .pickerStyle(.menu)
+                    if store.settings.shortcutMode.hasPrefix("f5") {
+                        Text("Hold F5 to record, then release to insert. If the key opens Apple Dictation, use Fn + F5 or enable standard function keys in System Settings › Keyboard › Keyboard Shortcuts › Function Keys.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    if store.settings.shortcutMode.hasPrefix("fn") {
+                        Text(
+                            "macOS also acts on the Globe key. Set System Settings › "
+                                + "Keyboard › \"Press 🌐 key to\" to \"Do Nothing\" so it only "
+                                + "records."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    MicrophonePriorityCard(store: store, onSettingsChanged: onSettingsChanged)
+                    PermissionSummary(store: store)
+                }
                 SettingsSection("Dictation") {
                     ToggleRow(
                         title: "AI cleanup",
-                        detail: "S1-mini by Superwhisper cleans up English transcripts. Off uses Parakeet alone and unloads the cleanup model. Changes apply after the current dictation finishes.",
+                        detail: "Optional English text cleanup with S1-mini. May add a short delay. Off by default; the model loads only when enabled.",
                         isOn: settingBinding(\.aiCleanup)
                     )
                     Divider()
                     ToggleRow(
                         title: "Streaming",
-                        detail: "Produce acoustic partials while you speak.",
+                        detail: "Process speech while you speak.",
                         isOn: settingBinding(\.streaming)
                     )
                     Divider()
                     ToggleRow(
                         title: "Dictionary recognition",
-                        detail: "Experimental: prefer spelling terms from Dictionary in the final transcript. Turn off to compare. Applies to the next final pass; live preview is unchanged.",
+                        detail: "Help recognize names and terms saved in your dictionary.",
                         isOn: settingBinding(\.dictionaryRecognition)
                     )
                     Divider()
                     ToggleRow(
-                        title: "Screen context",
-                        detail: "Unavailable with S1-mini: cleanup uses the transcript alone.",
-                        isOn: settingBinding(\.screenContext)
-                    )
-                    .disabled(true)
-                    Divider()
-                    ToggleRow(
                         title: "Local history",
-                        detail: "Retain paired WAV and metadata after insertion.",
+                        detail: "Save recordings and transcripts on this Mac.",
                         isOn: settingBinding(\.localHistory)
                     )
                     Divider()
                     ToggleRow(
                         title: "Instant microphone",
-                        detail: "Keep CoreAudio warm for near-instant key-to-recording latency.",
+                        detail: "Keep the microphone ready so recording starts quickly.",
                         isOn: settingBinding(\.instantMic)
                     )
                     Divider()
@@ -541,7 +622,7 @@ struct SettingsView: View {
                         Text(
                             "Uninstalling removes everything under ~/Library, so a copy "
                             + "of the dictionary, settings and history is kept in "
-                            + "~/.phonon. Phonon offers it back if it ever starts empty."
+                            + "~/.phonon. Whisplet offers it back if it ever starts empty."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -601,44 +682,10 @@ struct SettingsView: View {
                     }
                 }
 
-                SettingsSection("Shortcut") {
-                    Picker("Active shortcut", selection: Binding(
-                        get: { store.settings.shortcutMode },
-                        set: { value in
-                            store.updateSettings { $0.shortcutMode = value }
-                            onSettingsChanged()
-                        }
-                    )) {
-                        Text("F5 hold").tag("f5")
-                        Text("F5 hold + Control Space toggle").tag("f5_and_control_space")
-                        Text("Right Option hold + Control Space toggle").tag("both")
-                        Text("Right Option hold").tag("right_option")
-                        Text("Globe (fn) hold").tag("fn")
-                        Text("Globe (fn) hold + Control Space toggle")
-                            .tag("fn_and_control_space")
-                        Text("Control Space toggle").tag("control_space")
-                    }
-                    .pickerStyle(.menu)
-                    if store.settings.shortcutMode.hasPrefix("f5") {
-                        Text("Hold F5 to record, then release to insert. If the key opens Apple Dictation, use Fn + F5 or enable standard function keys in System Settings › Keyboard › Keyboard Shortcuts › Function Keys.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    if store.settings.shortcutMode.hasPrefix("fn") {
-                        Text(
-                            "macOS also acts on the Globe key. Set System Settings › "
-                                + "Keyboard › \"Press 🌐 key to\" to \"Do Nothing\" so it only "
-                                + "records."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-
                 SettingsSection("System") {
                     ToggleRow(
                         title: "Launch at login",
-                        detail: "Keep Phonon warm in the menu bar after signing in.",
+                        detail: "Keep Whisplet warm in the menu bar after signing in.",
                         isOn: Binding(
                             get: { store.launchAtLoginEnabled },
                             set: { store.setLaunchAtLogin($0) }
@@ -667,7 +714,7 @@ struct SettingsView: View {
             Button("Move to Trash", role: .destructive) { store.clearAllHistory() }
         } message: {
             Text(
-                "\(store.history.count) recordings and their transcripts go to the Trash. This cannot be undone from Phonon."
+                "\(store.history.count) recordings and their transcripts go to the Trash. This cannot be undone from Whisplet."
             )
         }
     }
@@ -684,8 +731,8 @@ struct SettingsView: View {
 
     private func exportEverything() {
         let panel = NSSavePanel()
-        panel.title = "Export Phonon data"
-        panel.nameFieldStringValue = "Phonon Data"
+        panel.title = "Export Whisplet data"
+        panel.nameFieldStringValue = "Whisplet Data"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         store.exportEverything(to: url)
@@ -726,10 +773,6 @@ struct PermissionSummary: View {
                     name: "Input Monitoring", granted: store.inputMonitoringAvailable,
                     actionTitle: store.inputMonitoringActionTitle,
                     action: { store.performInputMonitoringPermissionAction() })
-                PermissionRow(
-                    name: "Screen Recording", granted: store.screenRecordingPermission,
-                    actionTitle: store.screenRecordingActionTitle,
-                    action: { store.performScreenRecordingPermissionAction() })
             }
         }
     }
@@ -748,7 +791,7 @@ struct PrivacyChoiceView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("What Phonon may keep")
+            Text("What Whisplet may keep")
                 .font(.title2.bold())
             Text(
                 "Dictation runs entirely on this Mac. Saving recordings is optional and starts off."
@@ -762,19 +805,11 @@ struct PrivacyChoiceView: View {
                         "Save the paired WAV and text after insertion so History, the dictionary, and accuracy work have something to learn from.",
                     isOn: $localHistory
                 )
-                Divider()
-                ToggleRow(
-                    title: "Read the active window",
-                    detail:
-                        "Unavailable with S1-mini: cleanup uses the transcript alone.",
-                    isOn: $screenContext
-                )
-                .disabled(true)
             }
             .padding(14)
-            .background(EmberTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .background(AppTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
 
-            Text("Recording retention can be changed in Settings, and History has a Clear all button.")
+            Text("Choose how long to keep recordings or clear your history in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -790,9 +825,9 @@ struct PrivacyChoiceView: View {
         }
         .padding(24)
         .frame(width: 540)
-        .background(EmberTheme.background)
-        .foregroundStyle(EmberTheme.text)
-        .preferredColorScheme(.dark)
+        .background(AppTheme.background)
+        .foregroundStyle(AppTheme.text)
+        .preferredColorScheme(.light)
     }
 }
 
@@ -812,18 +847,18 @@ struct PermissionGuideView: View {
                     .resizable()
                     .frame(width: 58, height: 58)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Phonon.app").font(.headline)
+                    Text("Whisplet").font(.headline)
                     Text("Installed in Applications and ready to add in System Settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(14)
-            .background(EmberTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .background(AppTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
 
             Text(guide.manualInstructions)
                 .font(.headline)
-            Text("After enabling Phonon, quit it completely before reopening so macOS applies the permission.")
+            Text("After enabling Whisplet, quit it completely before reopening so macOS applies the permission.")
                 .font(.callout)
 
             HStack {
@@ -836,14 +871,14 @@ struct PermissionGuideView: View {
                     NSWorkspace.shared.open(guide.pane.settingsURL)
                 }
                 .buttonStyle(.borderedProminent)
-                Button("Quit Phonon", action: onDone)
+                Button("Quit Whisplet", action: onDone)
             }
         }
         .padding(24)
         .frame(width: 540)
-        .background(EmberTheme.background)
-        .foregroundStyle(EmberTheme.text)
-        .preferredColorScheme(.dark)
+        .background(AppTheme.background)
+        .foregroundStyle(AppTheme.text)
+        .preferredColorScheme(.light)
     }
 }
 
@@ -862,12 +897,12 @@ struct Card<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         content
-            .padding(18)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(EmberTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(EmberTheme.border.opacity(0.72), lineWidth: 1)
+                    .stroke(AppTheme.border.opacity(0.72), lineWidth: 1)
             )
     }
 }
@@ -882,7 +917,7 @@ struct StatTile: View {
             HStack(spacing: 14) {
                 Image(systemName: symbol)
                     .font(.title2)
-                    .foregroundStyle(EmberTheme.warm)
+                    .foregroundStyle(AppTheme.warm)
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(value)
@@ -941,12 +976,12 @@ struct MicrophonePriorityCard: View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Microphone priority").font(.headline)
-                Text("Phonon uses the highest-ranked microphone that is plugged in.")
+                Text("Whisplet uses the highest-ranked microphone that is plugged in.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if ranked.isEmpty {
-                    Text("No microphone ranked yet, so Phonon follows the system input.")
+                    Text("No microphone ranked yet, so Whisplet follows the system input.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -963,15 +998,15 @@ struct MicrophonePriorityCard: View {
                         Image(systemName: connected ? "mic.fill" : "mic.slash")
                             .foregroundStyle(
                                 active
-                                    ? EmberTheme.healthy
-                                    : (connected ? EmberTheme.muted : .secondary))
+                                    ? AppTheme.healthy
+                                    : (connected ? AppTheme.muted : .secondary))
                         Text(microphone)
                             .lineLimit(1)
                             .foregroundStyle(connected ? .primary : .secondary)
                         if active {
                             Text("in use")
                                 .font(.caption2)
-                                .foregroundStyle(EmberTheme.healthy)
+                                .foregroundStyle(AppTheme.healthy)
                         } else if !connected {
                             Text("not connected")
                                 .font(.caption2)
@@ -1097,7 +1132,7 @@ struct PermissionRow: View {
     var body: some View {
         HStack {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(granted ? EmberTheme.healthy : EmberTheme.warm)
+                .foregroundStyle(granted ? AppTheme.healthy : AppTheme.warm)
             Text(name)
             Spacer()
             Text(statusText ?? (granted ? "Granted" : "Needs access"))
@@ -1131,7 +1166,7 @@ struct TranscriptSection: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(EmberTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
+                .background(AppTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }

@@ -4,8 +4,9 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 project_dir=$(cd "$script_dir/.." && pwd)
 bar_dir="$project_dir/bar"
-app_name=${PHONON_APP_NAME:-Phonon}
-bundle_id=${PHONON_BUNDLE_ID:-com.infatoshi.phonon}
+app_name=${PHONON_APP_NAME:-Whisplet}
+display_name=${PHONON_DISPLAY_NAME:-Whisplet}
+bundle_id=${PHONON_BUNDLE_ID:-com.tobiwsa.whisplet}
 app_path="$bar_dir/dist/$app_name.app"
 
 # Local installs must not silently lose the identity attached to macOS grants.
@@ -26,8 +27,8 @@ mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Helpers" \
 	"$staged_app/Contents/Resources/prompts" "$staged_app/Contents/Resources/licenses/uv"
 cp "$bar_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle_id" "$staged_app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName $app_name" "$staged_app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $app_name" "$staged_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName $display_name" "$staged_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $display_name" "$staged_app/Contents/Info.plist"
 cp "$bin_dir/PhononBar" "$staged_app/Contents/MacOS/PhononBar"
 cp "$project_dir/target/release/phonon" "$staged_app/Contents/Helpers/phonon"
 uv_bin=${PHONON_UV_BIN:-$(command -v uv || true)}
@@ -36,6 +37,8 @@ if [[ -z "$uv_bin" || ! -x "$uv_bin" ]]; then
 	exit 1
 fi
 cp -L "$uv_bin" "$staged_app/Contents/Helpers/uv"
+cp "$project_dir/LICENSE" "$staged_app/Contents/Resources/licenses/LICENSE"
+cp "$project_dir/THIRD_PARTY.md" "$staged_app/Contents/Resources/licenses/THIRD_PARTY.md"
 cp "$project_dir/sidecar/asr_server.py" "$staged_app/Contents/Resources/sidecar/asr_server.py"
 cp "$project_dir/sidecar/dictionary_bias.py" "$staged_app/Contents/Resources/sidecar/dictionary_bias.py"
 cp "$project_dir/sidecar/polish_server.py" "$staged_app/Contents/Resources/sidecar/polish_server.py"

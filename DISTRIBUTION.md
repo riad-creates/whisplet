@@ -1,56 +1,34 @@
-# Distribution
+# Whisplet distribution
 
-Phonon's public release is installed from source through its Homebrew tap. Model
-weights are not stored in the repository; the app downloads the open Parakeet and
-Gemma weights on first launch. Tagged releases also provide a Developer ID-signed
-and notarized DMG for direct installation.
+## Now: GitHub source builds
 
-## Runtime layout
+The repository, `AGENTS.md`, `docs/INSTALL.md` and portable install/update scripts
+are the first distribution route. Supported target: Apple Silicon, macOS 14+.
+Source builds are locally signed, optionally using a persistent certificate.
+No app login, paid developer membership or backend server is required.
 
-- The app bundle contains the native Swift UI, Rust engine, signed arm64 `uv`
-  runtime, both sidecars, the prompt, the English word list, and the startup
-  audio fixture.
-- ASR uses the stock `mlx-community/parakeet-tdt-0.6b-v2` model, pinned by
-  revision. It is public, ungated, CC-BY-4.0, and approximately 2.3 GB on disk.
-- Correction uses `mlx-community/gemma-4-e2b-it-4bit`, also pinned by revision,
-  approximately 3.3 GB on disk, run locally on `mlx-lm==0.31.3` through the
-  bundled `uv`. First launch therefore downloads roughly 5.6 GB in total.
-- Production Phonon does not redistribute FluidVoice or its private MLX helper,
-  and no longer depends on either. The fluid-1 baseline remains reachable behind
-  `PHONON_POLISH_BACKEND=fluid` and `phonon bench --baseline` for local
-  comparison only.
+`main` is the intended shared release branch. Work in `codex/…` branches and
+commit tested changes; publish tested revisions to `main` for source updates.
+`bash scripts/update.sh` pulls the tracking branch with `--ff-only` and rebuilds.
+This is a manual source update, not an automatic binary updater.
 
-This requires no Phonon file-storage service. Hugging Face hosts the upstream
-weights, GitHub hosts tagged source releases, and Vercel hosts the static website.
+The native interface is Whisplet. Existing Phonon Local installations preserve
+bundle ID, app path, signing certificate and data paths. Fresh installs use
+`com.tobiwsa.whisplet` in `~/Applications/Whisplet.app`.
 
-## Release channels
+## Later: prebuilt app and automatic updates
 
-- ASR-only fallback is not a supported release mode. The correction stage is
-  mandatory and is now bundled, which clears the blocker that held the previous
-  public build.
-- GitHub releases include a signed, notarized `Phonon.dmg` for direct download.
-- The bundled engine and small runtime resources do not depend on a checkout.
-- A correction model that cannot be downloaded or loaded is a startup failure,
-  not a degraded mode.
-- The DMG retains the same local model-download design and does not bundle model
-  weights or user data.
+For a normal downloaded-app experience, obtain Developer ID Application signing
+and notarization through an eligible Apple Developer Program account. Sign the
+nested helpers and bundle, notarize the packaged artifact and staple the ticket.
+The existing `scripts/release-dmg.sh` is an upstream reference and must be adapted
+and validated for Whisplet before publishing a binary release.
 
-## Apple distribution requirement
+A future Sparkle updater can fetch a signed update feed and app archives over
+HTTPS from static hosting/GitHub Releases. It does not require a Node server or
+user accounts. Keep updater signing keys private and preserve the bundle's Apple
+signing identity. Sparkle is not integrated in this source-build preview.
 
-Public direct-download distribution requires an active Apple Developer Program
-membership, a Developer ID Application certificate, and notarization. A free
-Personal Team development identity is not sufficient.
-
-## Release command
-
-Store notarization credentials once with `xcrun notarytool store-credentials`,
-then run:
-
-```bash
-PHONON_NOTARY_PROFILE=phonon-notary scripts/release-dmg.sh
-```
-
-The script builds the app, signs nested executables and the bundle with hardened
-runtime and secure timestamps, creates and signs `bar/dist/Phonon.dmg`, submits
-it to Apple, saves the notarization log, staples the ticket, and verifies the
-final artifact with Gatekeeper.
+The landing page lives in `website/` and links to source installation, not an
+upstream Phonon binary. Retain GPL attribution and publish corresponding source
+alongside any future distributed Whisplet binaries.

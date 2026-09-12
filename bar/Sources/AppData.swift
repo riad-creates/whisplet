@@ -299,14 +299,14 @@ enum PermissionGuide: String, Identifiable {
     var detail: String {
         switch self {
         case .inputMonitoring:
-            return "Turn on Phonon so the hold-to-talk shortcut works everywhere."
+            return "Turn on Whisplet so the hold-to-talk shortcut works everywhere."
         case .screenRecording:
-            return "Turn on Phonon so local screen context can improve technical terms."
+            return "Turn on Whisplet so local screen context can improve technical terms."
         }
     }
 
     var manualInstructions: String {
-        "Click + in System Settings, type Phonon, press Return, then turn Phonon on."
+        "Click + in System Settings and select this app, then turn its switch on. Existing local installs may still be listed as Phonon Local."
     }
 
     var pane: PrivacyPane {

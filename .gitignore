@@ -11,7 +11,6 @@
 .env.*
 /.phonon-local-signing-identity
 .vercel
-/AGENTS.md
 /CLAUDE.md
 /DEVLOG.md
 /dictionary_new_terms.txt
@@ -22,3 +21,4 @@
 *.dmg
 *.app/
 *.xcresult/
+/.whisplet-signing-identity
