@@ -5,6 +5,8 @@
 dictionary, optional recording history and a small waveform above the Dock.
 No app account or subscription. Your audio is processed on your Mac.
 
+[Website and setup command](https://whisplet.vercel.app)
+
 - **Hold to dictate:** F5, Right Option or Fn; Control–Space toggle is also available.
 - **Parakeet recognition** via MLX, with decoder confidence work removed and
   unchanged text-state calculations cached in the dictionary-aware decoder.

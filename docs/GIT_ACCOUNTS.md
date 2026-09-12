@@ -48,3 +48,8 @@ Whisplet is a personal project owned by **riad-creates**. Its canonical remote i
 `gh api user --jq .login` before creating repositories, releases or pull requests.
 Do not infer the destination owner from whichever `gh` account happens to be
 active. The original work-account copy is not the publishing target.
+
+The landing page uses the Vercel account `tobicj23-5222` and scope
+`tobicj23-5222s-projects`. This is separate from the GitHub CLI login; that Vercel
+project connects directly to `riad-creates/whisplet`. No second Vercel account is
+required. See `website/README.md` for hosting and automatic deployment settings.

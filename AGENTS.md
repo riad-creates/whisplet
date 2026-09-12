@@ -74,6 +74,10 @@ Developer ID/notarization for prebuilt distribution is a separate, optional path
   simulate a fresh Mac. Keep dependency downloads out of read-only check mode.
 - Website is the existing Next.js static export in `website/`. Use `npm ci` if
   dependencies are absent, `npm run lint`, `npm test`, and preserve its lockfile.
+- Its production host is Vercel: `https://whisplet.vercel.app`, project `whisplet`,
+  scope `tobicj23-5222s-projects`, repository `riad-creates/whisplet`, branch `main`.
+  Root Directory must be `website`, using Node 22. Read `website/README.md`.
+  Keep the landing page public and use the selected Vercel scope explicitly.
 - Use fabricated fixtures for previews. Never publish real user recordings or
   transcripts in the website, repository, tests or benchmark reports.
 - Work on `codex/…` branches; commit completed changes in coherent increments.
