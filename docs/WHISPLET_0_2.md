@@ -40,3 +40,24 @@ The existing local installation keeps its Phonon Local bundle path, bundle ID,
 certificate and data directory for compatibility. Internal binary names also
 remain unchanged. No personal recordings, model caches or signing secrets are
 included in the repository or landing page.
+
+## Personal repository and app-name migration
+
+The current publishing target is `riad-creates/whisplet`. The earlier work-account
+copy remains unchanged; ownership transfer was not performed. The origin remote,
+future commit identity and Git HTTPS credentials are pinned to the personal account.
+`gitswitch work`, `gitswitch personal` and `gitswitch status` switch/inspect the
+saved CLI accounts. Four isolated tests passed, and a real private-repository
+read succeeded while the CLI was switched to work, using the checkout's pinned
+personal credentials. The CLI was returned to personal afterward.
+
+The installed bundle migrated to `/Applications/Whisplet.app`. Its signature
+satisfies the pre-migration requirement; required permissions, F5 and cleanup-off
+survived relaunch. The Dock's recent-app entry now labels it **Whisplet** and
+points to the new bundle path. The previous app was saved as a zip backup by
+the installer. The installer's subsequent preflight resolves the new path with
+the same persistent certificate. Fresh source installs now use
+`com.riadcreates.whisplet`; existing installations retain their bundle IDs.
+
+The landing page's installation links now target the personal repository. Its
+lint and production/static-output tests passed again.
