@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Phonon.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.tobiwsa.whisplet</string>
+	<string>com.riadcreates.whisplet</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

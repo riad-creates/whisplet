@@ -40,7 +40,9 @@ def main():
         parser.error('--rounds must be positive')
     args.output.mkdir(parents=True, exist_ok=True)
     data = Path.home()/'Library/Application Support/Phonon'
-    app = Path('/Applications/Phonon Local.app')
+    app = Path('/Applications/Whisplet.app')
+    if not app.exists():
+        app = Path('/Applications/Phonon Local.app')
     settings_before = digest(data/'settings.json')
     records = []
     for rid in args.id or DEFAULT_IDS:

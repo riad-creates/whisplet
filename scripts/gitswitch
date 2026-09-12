@@ -1,0 +1,75 @@
+#!/bin/bash
+# Switch GitHub CLI accounts. Pin each checkout's Git identity independently.
+set -euo pipefail
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+config=${GITSWITCH_CONFIG:-"${XDG_CONFIG_HOME:-$HOME/.config}/gitswitch/accounts"}
+valid_account() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; }
+repo_account() { git config --local --get gitswitch.account 2>/dev/null || true; }
+
+# Git calls this helper through its credential protocol. Never log its output.
+if [[ ${1:-} == credential ]]; then
+    [[ ${2:-} == get ]] || exit 0
+    protocol= host=
+    while IFS='=' read -r key value && [[ -n "$key" ]]; do
+        case "$key" in protocol) protocol=$value ;; host) host=$value ;; esac
+    done
+    [[ "$protocol" == https && "$host" == github.com ]] || exit 0
+    account=$(repo_account)
+    valid_account "$account" || fail 'No valid GitHub account pinned for this checkout.'
+    token=$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token --hostname github.com --user "$account")
+    [[ -n "$token" ]] || fail 'The pinned GitHub account is not signed in.'
+    printf 'username=%s\npassword=%s\n\n' "$account" "$token"
+    exit 0
+fi
+command -v gh >/dev/null || fail 'Install GitHub CLI first: https://cli.github.com'
+case ${1:-status} in
+    status)
+        printf 'GitHub CLI: '
+        gh api user --jq .login
+        if git rev-parse --git-dir >/dev/null 2>&1; then
+            printf 'This checkout: %s\n' "$(repo_account)"
+            printf 'Commit identity: %s <%s>\n' "$(git config user.name || true)" "$(git config user.email || true)"
+            git remote -v
+        fi
+        if [[ -f "$config" ]]; then
+            printf '\nSaved profiles:\n'
+            awk -F '\t' 'NF==2 {printf "  gitswitch %-12s %s\n", $1, $2}' "$config"
+        fi
+        exit 0 ;;
+    -h|--help|help)
+        printf 'Usage: gitswitch [status|PROFILE]\nProfiles: %s (PROFILE<TAB>GITHUB_USERNAME per line)\n' "$config"
+        printf 'Switches gh globally; pins Git identity only in a matching GitHub checkout. Other checkouts keep their pinned accounts.\n'
+        exit 0 ;;
+esac
+[[ $# == 1 ]] || fail 'Usage: gitswitch PROFILE'
+[[ -z ${GH_TOKEN:-} && -z ${GITHUB_TOKEN:-} ]] || fail 'A shell token overrides gh account selection. Unset GH_TOKEN/GITHUB_TOKEN before switching.'
+[[ -f "$config" ]] || fail "No profiles configured. See docs/GIT_ACCOUNTS.md."
+account=$(awk -F '\t' -v profile="$1" '$1==profile {print $2; exit}' "$config")
+valid_account "$account" || fail "Unknown profile: $1"
+gh auth switch --hostname github.com --user "$account"
+profile=$(gh api user --jq '[.login, (.id|tostring)] | @tsv')
+IFS=$'\t' read -r login id <<< "$profile"
+[[ "$login" == "$account" && "$id" =~ ^[0-9]+$ ]] || fail 'GitHub returned a different account; checkout unchanged.'
+printf 'GitHub CLI now uses %s.\n' "$account"
+if ! git rev-parse --git-dir >/dev/null 2>&1; then exit 0; fi
+origin=$(git remote get-url origin 2>/dev/null || true)
+owner=
+case "$origin" in
+    https://github.com/*) rest=${origin#https://github.com/}; owner=${rest%%/*} ;;
+    '') ;;
+    *) printf 'This checkout uses a non-HTTPS origin; its Git identity and authentication were left unchanged.\n'; exit 0 ;;
+esac
+if [[ -n "$owner" && "$owner" != "$account" ]]; then
+    printf 'This checkout belongs to %s. Its Git identity and pinned account remain unchanged.\n' "$owner"
+    exit 0
+fi
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+printf -v helper '%q credential' "$script_dir/$(basename "${BASH_SOURCE[0]}")"
+git config --local user.name "$login"
+git config --local user.email "$id+$login@users.noreply.github.com"
+git config --local gitswitch.account "$account"
+# Empty helper resets inherited Keychain helpers for GitHub only in this repo.
+git config --local --replace-all credential.https://github.com.helper ''
+git config --local --add credential.https://github.com.helper "!$helper"
+git config --local credential.https://github.com.username "$account"
+printf 'This checkout is pinned to %s for commits and HTTPS pushes.\n' "$account"

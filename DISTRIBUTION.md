@@ -13,8 +13,8 @@ commit tested changes; publish tested revisions to `main` for source updates.
 This is a manual source update, not an automatic binary updater.
 
 The native interface is Whisplet. Existing Phonon Local installations preserve
-bundle ID, app path, signing certificate and data paths. Fresh installs use
-`com.tobiwsa.whisplet` in `~/Applications/Whisplet.app`.
+bundle ID, signing certificate and data paths while migrating the app bundle name
+once to Whisplet.app. Fresh installs use `com.riadcreates.whisplet` in `~/Applications/Whisplet.app`.
 
 ## Later: prebuilt app and automatic updates
 
@@ -32,3 +32,6 @@ signing identity. Sparkle is not integrated in this source-build preview.
 The landing page lives in `website/` and links to source installation, not an
 upstream Phonon binary. Retain GPL attribution and publish corresponding source
 alongside any future distributed Whisplet binaries.
+
+The canonical repository is `riad-creates/whisplet`. See `docs/GIT_ACCOUNTS.md`
+for account switching; the work-account copy is not used for future publishing.

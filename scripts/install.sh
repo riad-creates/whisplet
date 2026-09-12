@@ -11,26 +11,46 @@ mac_version=$(sw_vers -productVersion)
 xcrun --find swift >/dev/null 2>&1 || fail 'Install Apple Command Line Tools: xcode-select --install'
 command -v cargo >/dev/null || fail 'Install Rust using https://rustup.rs, then open a new terminal.'
 uv_bin=${PHONON_UV_BIN:-$(command -v uv || true)}
-if [[ -z "$uv_bin" && -x '/Applications/Phonon Local.app/Contents/Helpers/uv' ]]; then
-    uv_bin='/Applications/Phonon Local.app/Contents/Helpers/uv'
+if [[ -z "$uv_bin" ]]; then
+    for candidate in '/Applications/Whisplet.app' '/Applications/Phonon Local.app' "$HOME/Applications/Whisplet.app"; do
+        if [[ -x "$candidate/Contents/Helpers/uv" ]]; then
+            uv_bin="$candidate/Contents/Helpers/uv"
+            break
+        fi
+    done
 fi
 [[ -x "$uv_bin" ]] || fail 'Install uv: brew install uv (or follow https://docs.astral.sh/uv/getting-started/installation/).'
 
-# Preserve the original development install's path, certificate and permissions.
+# The visible app name migrates once; the existing signing identity stays stable.
 legacy=false
-if [[ -f "$project_dir/.phonon-local-signing-identity" && -d '/Applications/Phonon Local.app' ]]; then
-    legacy=true
-    app_name='Phonon Local'
-    bundle_id='local.tobi.phonon'
-    install_dir=/Applications
-    identity_file="$project_dir/.phonon-local-signing-identity"
-else
-    app_name=Whisplet
-    bundle_id=com.tobiwsa.whisplet
-    install_dir=${WHISPLET_INSTALL_DIR:-"$HOME/Applications"}
-    identity_file="$project_dir/.whisplet-signing-identity"
+app_name=Whisplet
+bundle_id=com.riadcreates.whisplet
+install_dir=${WHISPLET_INSTALL_DIR:-"$HOME/Applications"}
+identity_file="$project_dir/.whisplet-signing-identity"
+previous_app=
+if [[ -f "$project_dir/.phonon-local-signing-identity" ]]; then
+    for candidate in '/Applications/Phonon Local.app' '/Applications/Whisplet.app'; do
+        if [[ -d "$candidate" ]] && [[ $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$candidate/Contents/Info.plist") == local.tobi.phonon ]]; then
+            legacy=true
+            bundle_id=local.tobi.phonon
+            install_dir=/Applications
+            identity_file="$project_dir/.phonon-local-signing-identity"
+            previous_app="$candidate"
+            break
+        fi
+    done
 fi
 [[ "$install_dir" = /* ]] || fail 'WHISPLET_INSTALL_DIR must be an absolute path.'
+app_path="$install_dir/$app_name.app"
+previous_app=${previous_app:-$app_path}
+if [[ "$previous_app" != "$app_path" && -e "$app_path" ]]; then
+    fail 'Both the legacy app and Whisplet destination exist. Resolve the duplicate before migrating.'
+fi
+# Preserve IDs used by earlier source installs, regardless of the repository owner.
+if ! $legacy && [[ -f "$app_path/Contents/Info.plist" ]]; then
+    prior_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")
+    if [[ "$prior_id" == com.tobiwsa.whisplet ]]; then bundle_id="$prior_id"; fi
+fi
 identity=${PHONON_CODESIGN_IDENTITY:-}
 [[ -n "$identity" || ! -f "$identity_file" ]] || identity=$(cat "$identity_file")
 if [[ -z "$identity" ]]; then
@@ -42,7 +62,6 @@ if [[ "$identity" != '-' ]]; then
 elif $legacy; then
     fail 'The existing Phonon Local installation requires its persistent signing certificate.'
 fi
-app_path="$install_dir/$app_name.app"
 printf 'Destination: %s\nSigning: %s\n' "$app_path" "$([[ "$identity" == '-' ]] && printf 'ad hoc (no paid membership)' || printf 'saved local certificate')"
 if [[ "$identity" == '-' ]]; then
     printf 'Ad hoc builds may need Accessibility and Input Monitoring permission again after updates. Developer ID notarization is not included.\n'
@@ -54,15 +73,17 @@ export PHONON_CODESIGN_IDENTITY="$identity" PHONON_UV_BIN="$uv_bin"
 bash "$project_dir/scripts/package-bar.sh"
 source_app="$project_dir/bar/dist/$app_name.app"
 # Fail before touching the installed bundle if it is still running.
-if ps -axo command= | grep -F -- "$app_path/Contents/MacOS/PhononBar" | grep -v grep >/dev/null; then
-    fail 'Build complete. Quit Whisplet (or Phonon Local) from its menu, then run this installer again.'
-fi
+for running_path in "$previous_app" "$app_path"; do
+    if ps -axo command= | grep -F -- "$running_path/Contents/MacOS/PhononBar" | grep -v grep >/dev/null; then
+        fail 'Build complete. Quit Whisplet (or Phonon Local) from its menu, then run this installer again.'
+    fi
+done
 mkdir -p "$install_dir"
 staging=$(mktemp -d "$install_dir/.whisplet-install.XXXXXX")
 replaced=false
 cleanup() {
-    if ! $replaced && [[ -d "$staging/previous.app" && ! -e "$app_path" ]]; then
-        mv "$staging/previous.app" "$app_path"
+    if ! $replaced && [[ -d "$staging/previous.app" && ! -e "$previous_app" ]]; then
+        mv "$staging/previous.app" "$previous_app"
     fi
     rm -rf "$staging"
 }
@@ -70,16 +91,16 @@ trap cleanup EXIT
 # Finish copying and verifying before replacing anything.
 ditto "$source_app" "$staging/new.app"
 codesign --verify --deep --strict "$staging/new.app"
-if [[ -e "$app_path" ]]; then
-    [[ -d "$app_path/Contents" && ! -L "$app_path" ]] || fail 'The destination is not a normal app bundle.'
-    existing_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")
+if [[ -e "$previous_app" ]]; then
+    [[ -d "$previous_app/Contents" && ! -L "$previous_app" ]] || fail 'The destination is not a normal app bundle.'
+    existing_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$previous_app/Contents/Info.plist")
     [[ "$existing_id" == "$bundle_id" ]] || fail 'Destination belongs to a different application; refusing to replace it.'
     backup_dir="$project_dir/target/install-backups"
     mkdir -p "$backup_dir"
     backup_path="$backup_dir/$app_name-$(date +%Y%m%d-%H%M%S)-$$.zip"
-    ditto -c -k --sequesterRsrc --keepParent "$app_path" "$backup_path"
+    ditto -c -k --sequesterRsrc --keepParent "$previous_app" "$backup_path"
     printf 'Previous app saved: %s\n' "$backup_path"
-    mv "$app_path" "$staging/previous.app"
+    mv "$previous_app" "$staging/previous.app"
 fi
 mv "$staging/new.app" "$app_path"
 replaced=true

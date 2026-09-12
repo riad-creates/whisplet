@@ -18,9 +18,10 @@ Apple Developer membership is required for a local source build.
    bundle, verifies it, backs up any prior app and installs it. If the existing
    app is running, quit it using its menu and rerun. Do not kill a live dictation.
 5. Open the exact installed path printed by the installer. New installations
-   default to `~/Applications/Whisplet.app` and `com.tobiwsa.whisplet`.
-   The original development install stays at `/Applications/Phonon Local.app`
-   with `local.tobi.phonon`; do not rename or replace that identity.
+   default to `~/Applications/Whisplet.app` and `com.riadcreates.whisplet`.
+   The original development install migrates once from `/Applications/Phonon Local.app`
+   to `/Applications/Whisplet.app`, retaining `local.tobi.phonon` and its certificate.
+   The installer backs up the old bundle first. After migration keep the new path stable.
 6. Guide the user through Microphone, Accessibility and Input Monitoring in
    System Settings. These decisions belong to the user. Never modify TCC.db,
    disable Gatekeeper/SIP, strip quarantine, or reset other apps' permissions.
@@ -71,3 +72,11 @@ Developer ID/notarization for prebuilt distribution is a separate, optional path
 - Work on `codex/…` branches; commit completed changes in coherent increments.
   Describe actual validation and limits; don't claim a physical hotkey or
   microphone was tested based only on unit tests.
+
+## GitHub ownership
+
+This is a personal project. Publish only to `riad-creates/whisplet`; the work
+account's copy is not a destination for future pushes. Read `docs/GIT_ACCOUNTS.md`.
+Run `gitswitch personal` before GitHub CLI mutations and verify the logged-in
+account. Git commits and HTTPS credentials should remain pinned locally to the
+personal account even when the global CLI account is switched for other work.

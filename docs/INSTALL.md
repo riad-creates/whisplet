@@ -10,7 +10,7 @@ disk space for models, runtime dependencies and build files.
 
 Give your coding agent this request:
 
-> Clone https://github.com/tobiwsa/whisplet, read its AGENTS.md, and help me build
+> Clone https://github.com/riad-creates/whisplet, read its AGENTS.md, and help me build
 > and install Whisplet on this Mac. Use F5 hold-to-record and keep S1 cleanup off.
 > Preserve existing recordings, settings and signing identity if updating.
 
@@ -27,7 +27,7 @@ Requirements:
   if you already use Homebrew. Python dependencies are managed by uv.
 
 ```bash
-git clone https://github.com/tobiwsa/whisplet.git
+git clone https://github.com/riad-creates/whisplet.git
 cd whisplet
 bash scripts/install.sh --check
 bash scripts/install.sh
@@ -35,7 +35,7 @@ open "$HOME/Applications/Whisplet.app"
 ```
 
 The last path is the default for a fresh install. Use the exact path printed by
-the installer if it preserves an existing Phonon Local installation instead.
+the installer for an existing local development installation instead.
 To use a different install directory, set `WHISPLET_INSTALL_DIR` to an absolute
 path on every install/update. Keep it stable; the default requires no sudo.
 
@@ -91,5 +91,8 @@ Do not disable Gatekeeper or strip quarantine to make a downloaded app run.
 This fork currently keeps Phonon's data paths so existing users retain their
 settings and recordings. Do not run Whisplet and Phonon simultaneously; they
 share that store and the single-instance lock. Internal executable names remain
-`PhononBar` and `phonon`. For the original development install, the bundle stays
-named **Phonon Local.app** while the interface displays **Whisplet**.
+`PhononBar` and `phonon`. For the original development install, the installer migrates **Phonon Local.app**
+to **Whisplet.app** in `/Applications`, preserving its certificate and bundle ID.
+If an old pinned Dock item remains, remove that shortcut and pin the new app.
+Previous source installs keep their bundle IDs even after repository ownership
+changes. New installs use `com.riadcreates.whisplet`.

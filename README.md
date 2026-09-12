@@ -20,13 +20,13 @@ paid Apple Developer membership.
 
 Ask your coding agent:
 
-> Clone https://github.com/tobiwsa/whisplet, read AGENTS.md, and help me install it.
+> Clone https://github.com/riad-creates/whisplet, read AGENTS.md, and help me install it.
 > Use F5 hold-to-record with S1 cleanup off.
 
 Or install Apple Command Line Tools, Rust and uv, then:
 
 ```bash
-git clone https://github.com/tobiwsa/whisplet.git
+git clone https://github.com/riad-creates/whisplet.git
 cd whisplet
 bash scripts/install.sh --check
 bash scripts/install.sh
@@ -89,7 +89,7 @@ bash scripts/package-bar.sh
 
 Internal binary and data names retain `phonon` for compatibility. The original
 local development install uses `scripts/package-local.sh` to retain its existing
-certificate, bundle ID and installation path.
+certificate and bundle ID while migrating its app name to Whisplet.
 
 ## Credits and license
 
@@ -98,3 +98,5 @@ starting from version 0.1.7. Source remains **GPL-3.0**; keep the original notic
 and provide corresponding source when distributing a build. NVIDIA's Parakeet
 and Superwhisper's S1-mini retain their respective model licenses. Weights are
 not included in this repository. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+
+For work/personal GitHub switching, see [Git accounts](docs/GIT_ACCOUNTS.md).

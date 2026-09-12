@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-const prompt = 'Clone https://github.com/tobiwsa/whisplet, read AGENTS.md, and help me install it on this Mac. Use F5 hold-to-record with S1 cleanup off.';
+const prompt = 'Clone https://github.com/riad-creates/whisplet, read AGENTS.md, and help me install it on this Mac. Use F5 hold-to-record with S1 cleanup off.';
 export default function InstallCommand() {
   const [status, setStatus] = useState('Copy prompt');
   async function copy() {

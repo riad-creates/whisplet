@@ -12,8 +12,14 @@ if [[ -z "$identity" || "$identity" == "-" ]]; then
 	exit 1
 fi
 
-export PHONON_APP_NAME='Phonon Local'
+export PHONON_APP_NAME='Whisplet'
 export PHONON_BUNDLE_ID='local.tobi.phonon'
 export PHONON_CODESIGN_IDENTITY="$identity"
-export PHONON_UV_BIN=${PHONON_UV_BIN:-'/Applications/Phonon Local.app/Contents/Helpers/uv'}
+if [[ -z ${PHONON_UV_BIN:-} ]]; then
+    if [[ -x /Applications/Whisplet.app/Contents/Helpers/uv ]]; then
+        export PHONON_UV_BIN=/Applications/Whisplet.app/Contents/Helpers/uv
+    else
+        export PHONON_UV_BIN='/Applications/Phonon Local.app/Contents/Helpers/uv'
+    fi
+fi
 exec bash "$script_dir/package-bar.sh"

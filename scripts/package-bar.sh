@@ -6,7 +6,7 @@ project_dir=$(cd "$script_dir/.." && pwd)
 bar_dir="$project_dir/bar"
 app_name=${PHONON_APP_NAME:-Whisplet}
 display_name=${PHONON_DISPLAY_NAME:-Whisplet}
-bundle_id=${PHONON_BUNDLE_ID:-com.tobiwsa.whisplet}
+bundle_id=${PHONON_BUNDLE_ID:-com.riadcreates.whisplet}
 app_path="$bar_dir/dist/$app_name.app"
 
 # Local installs must not silently lose the identity attached to macOS grants.

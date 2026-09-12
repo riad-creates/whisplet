@@ -1,6 +1,6 @@
 import InstallCommand from './InstallCommand';
 
-const repo = 'https://github.com/tobiwsa/whisplet';
+const repo = 'https://github.com/riad-creates/whisplet';
 
 function Mark({ small = false }: { small?: boolean }) {
   return <svg className={small ? 'mark small' : 'mark'} viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M10 50C20 5 30 95 40 50C50 5 60 95 70 50" stroke="currentColor" strokeWidth="7.5" strokeLinecap="round"/><path d="M88 24V76" stroke="#222330" strokeWidth="7" strokeLinecap="round"/></svg>;
