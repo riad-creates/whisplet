@@ -9,5 +9,8 @@ test('static export directs users to this fork and describes the actual installa
   assert.match(html, /Source-build preview/);
   assert.match(html, /No paid Apple Developer membership/);
   assert.match(html, /off by default/);
+  assert.match(html, /raw.githubusercontent.com\/riad-creates\/whisplet\/main\/scripts\/bootstrap.sh/);
+  assert.match(html, /Copy setup command/);
+  assert.match(html, /setup continues automatically/);
   assert.doesNotMatch(html, /Phonon\.dmg|brew install --cask|phonon\.sh|fonts\.googleapis/);
 });

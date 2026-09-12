@@ -18,24 +18,29 @@ This is a **source-build preview**, for Apple Silicon and macOS 14 or later.
 There is no notarized Whisplet download yet. Building on your Mac does not require
 paid Apple Developer membership.
 
-Ask your coding agent:
-
-> Clone https://github.com/riad-creates/whisplet, read AGENTS.md, and help me install it.
-> Use F5 hold-to-record with S1 cleanup off.
-
-Or install Apple Command Line Tools, Rust and uv, then:
+Paste this whole block into Terminal:
 
 ```bash
-git clone https://github.com/riad-creates/whisplet.git
-cd whisplet
-bash scripts/install.sh --check
-bash scripts/install.sh
+(
+  set -e
+  whisplet_installer=$(mktemp)
+  trap 'rm -f "$whisplet_installer"' EXIT
+  curl -fsSL https://raw.githubusercontent.com/riad-creates/whisplet/main/scripts/bootstrap.sh -o "$whisplet_installer"
+  /bin/bash "$whisplet_installer"
+)
 ```
 
-Open the app path printed by the installer and grant its macOS permissions.
-The first launch downloads the local model and runtime. After setup, dictation
-works offline. Choose F5 under Settings → Dictation shortcut. On keyboards that
-map F5 to system Dictation, use Fn+F5 or enable standard function keys.
+It sets up missing Rust and uv, downloads the source, builds and opens Whisplet.
+No Homebrew, manual PATH changes, Terminal restart or coding agent is needed.
+Apple may ask you to approve Command Line Tools installation; leave Terminal
+open and setup continues afterward. You also approve the app's macOS permissions.
+The first launch downloads the local model and Python runtime. Dictation then
+works offline. S1 cleanup is off by default; choose your shortcut in Settings.
+
+Already have the source? Pull the latest changes, then double-click
+**Install Whisplet.command** or run `bash scripts/install.sh`. Missing tools are
+handled automatically. A repeat run reuses completed tool installation and builds.
+The bootstrap keeps its clone in `~/Developer/whisplet`; use that directory for updates.
 
 [Full installation guide](docs/INSTALL.md) · [Agent instructions](AGENTS.md)
 

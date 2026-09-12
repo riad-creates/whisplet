@@ -5,21 +5,9 @@ project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 check_only=false
 case "${1:-}" in --check) check_only=true ;; '') ;; *) printf 'Usage: bash scripts/install.sh [--check]\n' >&2; exit 2 ;; esac
 fail() { printf '%s\n' "$*" >&2; exit 1; }
-[[ $(uname -s) == Darwin && $(uname -m) == arm64 ]] || fail 'Whisplet needs an Apple Silicon Mac. Run Terminal natively, not under Rosetta.'
-mac_version=$(sw_vers -productVersion)
-[[ ${mac_version%%.*} -ge 14 ]] || fail 'Whisplet needs macOS 14 or later.'
-xcrun --find swift >/dev/null 2>&1 || fail 'Install Apple Command Line Tools: xcode-select --install'
-command -v cargo >/dev/null || fail 'Install Rust using https://rustup.rs, then open a new terminal.'
-uv_bin=${PHONON_UV_BIN:-$(command -v uv || true)}
-if [[ -z "$uv_bin" ]]; then
-    for candidate in '/Applications/Whisplet.app' '/Applications/Phonon Local.app' "$HOME/Applications/Whisplet.app"; do
-        if [[ -x "$candidate/Contents/Helpers/uv" ]]; then
-            uv_bin="$candidate/Contents/Helpers/uv"
-            break
-        fi
-    done
-fi
-[[ -x "$uv_bin" ]] || fail 'Install uv: brew install uv (or follow https://docs.astral.sh/uv/getting-started/installation/).'
+source "$project_dir/scripts/bootstrap.sh"
+if $check_only; then whisplet_prepare_dependencies check; else whisplet_prepare_dependencies; fi
+uv_bin="$PHONON_UV_BIN"
 
 # The visible app name migrates once; the existing signing identity stays stable.
 legacy=false
@@ -72,11 +60,16 @@ export PHONON_APP_NAME="$app_name" PHONON_DISPLAY_NAME=Whisplet PHONON_BUNDLE_ID
 export PHONON_CODESIGN_IDENTITY="$identity" PHONON_UV_BIN="$uv_bin"
 bash "$project_dir/scripts/package-bar.sh"
 source_app="$project_dir/bar/dist/$app_name.app"
-# Fail before touching the installed bundle if it is still running.
+# Wait without killing an in-progress dictation or rebuilding a second time.
 for running_path in "$previous_app" "$app_path"; do
-    if ps -axo command= | grep -F -- "$running_path/Contents/MacOS/PhononBar" | grep -v grep >/dev/null; then
-        fail 'Build complete. Quit Whisplet (or Phonon Local) from its menu, then run this installer again.'
-    fi
+    notified=false
+    while ps -axo command= | grep -F -- "$running_path/Contents/MacOS/PhononBar" | grep -v grep >/dev/null; do
+        if ! $notified; then
+            printf '\nBuild complete. Finish any dictation and quit Whisplet (or Phonon Local) from its menu. Installation continues automatically.\n'
+            notified=true
+        fi
+        sleep 2
+    done
 done
 mkdir -p "$install_dir"
 staging=$(mktemp -d "$install_dir/.whisplet-install.XXXXXX")
@@ -106,3 +99,5 @@ mv "$staging/new.app" "$app_path"
 replaced=true
 printf '%s\n' "$identity" > "$identity_file"
 printf 'Installed Whisplet. Open: %s\nYour settings, dictionary, recordings and model cache were preserved.\n' "$app_path"
+printf 'Opening Whisplet. Approve its macOS permissions and let the first model download finish.\n'
+open "$app_path" || printf 'Could not open automatically. Open the app at the path above.\n' >&2

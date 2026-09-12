@@ -6,36 +6,74 @@ Developer membership. Initial setup needs internet access for tools and models;
 dictation runs locally once those downloads finish. Allow several GB of free
 disk space for models, runtime dependencies and build files.
 
+## One setup command
+
+Paste the whole block below into Terminal. It downloads a complete installer
+before running it. Read [the script](../scripts/bootstrap.sh) if you want to
+inspect what it does.
+
+```bash
+(
+  set -e
+  whisplet_installer=$(mktemp)
+  trap 'rm -f "$whisplet_installer"' EXIT
+  curl -fsSL https://raw.githubusercontent.com/riad-creates/whisplet/main/scripts/bootstrap.sh -o "$whisplet_installer"
+  /bin/bash "$whisplet_installer"
+)
+```
+
+The installer:
+
+1. Checks your Mac and opens Apple's Command Line Tools installer if needed.
+   **You click Install and review Apple's terms.** Leave Terminal open; setup
+   continues automatically after those tools finish installing.
+2. Finds usable Rust and uv, including common locations missing from PATH.
+   Installs missing tools directly from their official installers. Homebrew is
+   unnecessary. It uses the tools immediately without changing shell profiles
+   or requiring a Terminal restart.
+3. Clones this public repository into `~/Developer/whisplet`, builds the app,
+   signs it locally, installs it and opens it. Repeating the command safely
+   updates that clone if it is clean and has an upstream.
+4. Lets Whisplet handle its Python runtime and first model download on launch.
+   **You approve macOS privacy permissions.** No app login is needed.
+
+The first build and downloads take time. Keep the Mac online and allow several
+GB of disk space. If setup is interrupted, run the same command again: completed
+tool installations, dependency caches and incremental build work are reused.
+Apple tool installation waits for up to 45 minutes; after a timeout, complete
+Apple's installer and rerun. No licenses are accepted automatically.
+
+## Already downloaded or cloned the source?
+
+Pull the latest changes in your existing clone first, then double-click
+**Install Whisplet.command** in Finder, or run:
+
+```bash
+bash scripts/install.sh
+```
+
+This uses the same automatic dependency setup. If you downloaded a source ZIP,
+the installer works, but Git updates require a clone. Do not bypass macOS
+security warnings; the Terminal entry point is also available after inspecting
+the source. Run `bash scripts/install.sh --check` for a read-only prerequisite
+and signing check, or `bash scripts/bootstrap.sh --setup-only` to prepare tools
+without building or replacing an app.
+
 ## Let an agent install it
 
 Give your coding agent this request:
 
 > Clone https://github.com/riad-creates/whisplet, read its AGENTS.md, and help me build
-> and install Whisplet on this Mac. Use F5 hold-to-record and keep S1 cleanup off.
+> and install Whisplet on this Mac using its automatic installer. Keep S1 cleanup off.
 > Preserve existing recordings, settings and signing identity if updating.
 
 Your agent can install/build software. You still approve macOS privacy prompts.
 Only run installation code from a repository you trust.
 
-## Install yourself
+## First launch
 
-Requirements:
-
-- Apple Command Line Tools: `xcode-select --install` (complete the macOS dialog).
-- [Rust](https://rustup.rs): install the stable toolchain, then reopen Terminal.
-- [uv](https://docs.astral.sh/uv/getting-started/installation/): `brew install uv`
-  if you already use Homebrew. Python dependencies are managed by uv.
-
-```bash
-git clone https://github.com/riad-creates/whisplet.git
-cd whisplet
-bash scripts/install.sh --check
-bash scripts/install.sh
-open "$HOME/Applications/Whisplet.app"
-```
-
-The last path is the default for a fresh install. Use the exact path printed by
-the installer for an existing local development installation instead.
+The default destination for a fresh install is `~/Applications/Whisplet.app`.
+Use the exact path printed by the installer for an existing development install.
 To use a different install directory, set `WHISPLET_INSTALL_DIR` to an absolute
 path on every install/update. Keep it stable; the default requires no sudo.
 
@@ -61,13 +99,33 @@ bash scripts/update.sh
 
 This fetches the current branch's upstream with a fast-forward-only pull and
 rebuilds the app. It stops if the checkout has uncommitted changes. It does not
-silently replace files you edited. Launch the installed app again afterward.
+silently replace files you edited. If the app is still running when the build
+finishes, the installer waits for you to quit it, then installs and opens the
+updated app without making you rebuild again.
 
 Each replacement backs up the previous app under `target/install-backups/` in
 your clone. To roll back, quit the app, extract that backup, and restore it to
 the same installation path. Do not delete the application-support directory.
 Settings, dictionary, recordings, backups and model caches are untouched by
 installation and updating. There is no automatic update service yet.
+
+## Where automatic dependencies live
+
+Working tools already on your Mac are reused. If Rust is missing or cannot run,
+the installer puts a separate minimal stable Rust toolchain under
+`~/.local/share/whisplet/build-tools/{cargo,rustup}`. Missing uv is installed under
+`~/.local/share/whisplet/build-tools/bin` (currently uv 0.11.8, matching the tested
+app runtime). Existing Rust installations and shell startup files are untouched.
+The app bundles uv, so normal dictation does not need a development PATH.
+
+Optional environment settings: `WHISPLET_TOOL_DIR` changes the managed tools
+directory; `WHISPLET_SOURCE_DIR` changes the bootstrap clone location;
+`WHISPLET_INSTALL_DIR` changes the app destination. Use absolute paths and keep
+them consistent on subsequent runs. An explicit `PHONON_UV_BIN` must point to a
+working uv executable; unset it to let setup find or install uv automatically.
+
+Official installers: [Rust](https://rust-lang.github.io/rustup/installation/index.html)
+and [uv](https://docs.astral.sh/uv/reference/installer/).
 
 ## Signing: free local builds versus downloadable releases
 

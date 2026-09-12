@@ -15,7 +15,7 @@ if [[ "$bundle_id" == "local.tobi.phonon" && "${PHONON_CODESIGN_IDENTITY:-}" == 
 	exit 1
 fi
 
-cargo build --release --package phonon-cli --bin phonon --manifest-path "$project_dir/Cargo.toml"
+cargo build --locked --release --package phonon-cli --bin phonon --manifest-path "$project_dir/Cargo.toml"
 swift build --disable-sandbox -c release --package-path "$bar_dir"
 bin_dir=$(swift build --disable-sandbox -c release --package-path "$bar_dir" --show-bin-path)
 

@@ -8,15 +8,19 @@ Apple Developer membership is required for a local source build.
 ## Install for a user
 
 1. Read `README.md` and `docs/INSTALL.md`. Inspect scripts before running them.
-2. Verify native arm64 macOS 14+ (`uname -m`, `sw_vers`), Apple Command Line
-   Tools (`xcrun --find swift`), Rust (`cargo --version`) and uv (`uv --version`).
-   Follow the official installation links in the guide for missing tools.
+2. Use the automatic setup in `scripts/bootstrap.sh` / `scripts/install.sh`.
+   It checks native arm64 macOS 14+, finds tools outside PATH, and installs
+   missing Rust and uv without Homebrew or shell-profile changes. If Apple
+   Command Line Tools are missing, it opens Apple's installer and waits for
+   the user to approve it. Do not turn missing dependencies into manual chores.
    Do not enroll the user in paid services or accept license terms for them.
 3. Run `bash scripts/install.sh --check`. This checks prerequisites and identifies
    the destination/signing strategy without building or replacing the app.
+   Missing tools make this read-only check fail; run without --check to set them up.
 4. Run `bash scripts/install.sh`. It builds release binaries, creates a signed
    bundle, verifies it, backs up any prior app and installs it. If the existing
-   app is running, quit it using its menu and rerun. Do not kill a live dictation.
+   app is running, it waits for the user to quit using its menu, then continues.
+   Do not kill a live dictation. It opens the installed app when finished.
 5. Open the exact installed path printed by the installer. New installations
    default to `~/Applications/Whisplet.app` and `com.riadcreates.whisplet`.
    The original development install migrates once from `/Applications/Phonon Local.app`
@@ -65,6 +69,9 @@ Developer ID/notarization for prebuilt distribution is a separate, optional path
   sidecar changes. Metal inference needs a real Apple Silicon Mac.
 - `bash scripts/package-local.sh` rebuilds the established development bundle.
   `bash scripts/install.sh` is the portable build/install entry point.
+- Installer changes: `python3 -m unittest discover -s tests -p test_installer.py`
+  and `bash scripts/install.sh --check`. Do not uninstall the user's tools to
+  simulate a fresh Mac. Keep dependency downloads out of read-only check mode.
 - Website is the existing Next.js static export in `website/`. Use `npm ci` if
   dependencies are absent, `npm run lint`, `npm test`, and preserve its lockfile.
 - Use fabricated fixtures for previews. Never publish real user recordings or
