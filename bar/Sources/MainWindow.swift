@@ -609,6 +609,8 @@ struct SettingsView: View {
                             onSettingsChanged()
                         }
                     )) {
+                        Text("F5 hold").tag("f5")
+                        Text("F5 hold + Control Space toggle").tag("f5_and_control_space")
                         Text("Right Option hold + Control Space toggle").tag("both")
                         Text("Right Option hold").tag("right_option")
                         Text("Globe (fn) hold").tag("fn")
@@ -617,6 +619,11 @@ struct SettingsView: View {
                         Text("Control Space toggle").tag("control_space")
                     }
                     .pickerStyle(.menu)
+                    if store.settings.shortcutMode.hasPrefix("f5") {
+                        Text("Hold F5 to record, then release to insert. If the key opens Apple Dictation, use Fn + F5 or enable standard function keys in System Settings › Keyboard › Keyboard Shortcuts › Function Keys.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                     if store.settings.shortcutMode.hasPrefix("fn") {
                         Text(
                             "macOS also acts on the Globe key. Set System Settings › "

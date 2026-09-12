@@ -43,7 +43,7 @@ struct NativeSettings: Codable, Equatable {
     init(
         schemaVersion: Int = NativeSettings.currentSchemaVersion,
         streaming: Bool = true,
-        aiCleanup: Bool = true,
+        aiCleanup: Bool = false,
         dictionaryRecognition: Bool = true,
         localHistory: Bool = false,
         screenContext: Bool = false,
@@ -73,7 +73,7 @@ struct NativeSettings: Codable, Equatable {
         let storedSchema = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         schemaVersion = storedSchema
         streaming = try values.decodeIfPresent(Bool.self, forKey: .streaming) ?? true
-        aiCleanup = try values.decodeIfPresent(Bool.self, forKey: .aiCleanup) ?? true
+        aiCleanup = try values.decodeIfPresent(Bool.self, forKey: .aiCleanup) ?? false
         dictionaryRecognition = try values.decodeIfPresent(Bool.self, forKey: .dictionaryRecognition) ?? true
         // Before schema 2 both defaulted to on, so an absent key on an existing
         // install means the owner was running with it enabled.

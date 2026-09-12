@@ -268,6 +268,8 @@ enum ShortcutPolicy {
     static func sources(for mode: String) -> Set<String> {
         switch mode {
         case "right_option": return ["right-option"]
+        case "f5": return ["f5"]
+        case "f5_and_control_space": return ["f5", "control-space"]
         case "fn": return ["fn"]
         case "control_space": return ["control-space"]
         case "fn_and_control_space": return ["fn", "control-space"]
@@ -1433,6 +1435,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var eventTapSource: CFRunLoopSource?
     private var toggleHotKey: EventHotKeyRef?
     private var toggleHandler: EventHandlerRef?
+    private let f5HotKey = F5HoldHotKey()
     private var enginesReady = false
     private var hideWork: DispatchWorkItem?
     /// First dict often lands before models are warm — hold until ready.
@@ -1662,6 +1665,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             stopDictation(source: "settings")
         }
         appliedSettings = appStore.settings
+        configureF5HotKey()
         applyCleanupSettingIfIdle()
         state.streamingPreviewEnabled = appStore.settings.streaming
         streamingMenuItem?.state = state.streamingPreviewEnabled ? .on : .off
@@ -2355,6 +2359,21 @@ final class AppController: NSObject, NSApplicationDelegate {
                 "phonon: Ctrl+Space registration failed (handler=\(handlerStatus), hotkey=\(hotKeyStatus))"
             )
         }
+        configureF5HotKey()
+    }
+
+    private func configureF5HotKey() {
+        f5HotKey.onChange = { [weak self] pressed, timestamp in
+            guard let self, self.shortcutAllows(source: "f5") else { return }
+            if pressed {
+                self.startDictation(source: "f5", eventNs: timestamp, callbackNs: timestamp)
+            } else {
+                self.stopDictation(source: "f5", eventNs: timestamp, callbackNs: timestamp)
+            }
+        }
+        if !f5HotKey.setEnabled(shortcutAllows(source: "f5")) {
+            appStore.lastError = "F5 could not be registered. Check whether another app is using it, then select the shortcut again."
+        }
     }
 
     private func installHotkey() {
@@ -2581,6 +2600,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         screenContextTask?.cancel()
         engine.shutdown()
         recorder.stop(writeFile: false)
+        f5HotKey.setEnabled(false)
         removeEventTap()
     }
 

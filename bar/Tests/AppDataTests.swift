@@ -23,7 +23,7 @@ final class AppDataTests: XCTestCase {
 
         let store = NativeAppStore(supportDirectory: directory)
         XCTAssertTrue(store.settings.instantMic)
-        XCTAssertTrue(store.settings.aiCleanup)
+        XCTAssertFalse(store.settings.aiCleanup)
         XCTAssertTrue(store.settings.dictionaryRecognition)
         XCTAssertEqual(store.settings.shortcutMode, "both")
 
@@ -46,6 +46,7 @@ final class AppDataTests: XCTestCase {
 
     func testFreshInstallKeepsRetainingFeaturesOffUntilAsked() throws {
         let store = NativeAppStore(supportDirectory: directory)
+        XCTAssertFalse(store.settings.aiCleanup)
         XCTAssertFalse(store.settings.localHistory)
         XCTAssertFalse(store.settings.screenContext)
         XCTAssertTrue(store.needsPrivacyChoice)

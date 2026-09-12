@@ -451,7 +451,7 @@ pub struct UsageStats {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SettingsFile {
     pub schema_version: u32,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub ai_cleanup: bool,
     #[serde(default = "default_true")]
     pub dictionary_recognition: bool,
@@ -473,7 +473,7 @@ impl Default for SettingsFile {
     fn default() -> Self {
         Self {
             schema_version: DATA_SCHEMA_VERSION,
-            ai_cleanup: true,
+            ai_cleanup: false,
             dictionary_recognition: true,
             streaming: true,
             local_history: true,
