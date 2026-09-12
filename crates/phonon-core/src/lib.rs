@@ -35,7 +35,7 @@ const STARTUP_LLM_PRIME_ID: &str = "__phonon_startup_llm_prime__";
 const STARTUP_LLM_AUDIO_ID: &str = "__phonon_startup_llm_audio__";
 const STARTUP_LLM_ID: &str = "__phonon_startup_llm__";
 const STARTUP_LLM_PRIME_TEXT: &str = "hello fluid voice startup prime";
-const STARTUP_LLM_TEXT: &str = "Do you know the difference between Koo Bloss and Koo DNN?";
+const STARTUP_LLM_TEXT: &str = "um please send the report by friday";
 
 #[derive(Debug, Clone)]
 pub enum EngineEvent {
@@ -71,6 +71,7 @@ pub struct Engine {
     polisher: Option<PolishSidecar>,
     asr_ready: bool,
     llm_ready: bool,
+    cleanup_enabled: bool,
     root: std::path::PathBuf,
     started: Instant,
     /// FIFO of polish requests (serve-json returns in order).
@@ -96,18 +97,19 @@ struct PolishRequest {
 
 impl Engine {
     pub fn start(root: &Path) -> Result<Self> {
-        if !polish_available(root) {
-            bail!("the required local correction runtime is missing from this install");
-        }
+        Self::start_with_cleanup(root, cleanup_setting()?)
+    }
+
+    pub fn start_with_cleanup(root: &Path, cleanup_enabled: bool) -> Result<Self> {
+        let polisher = start_cleanup(root, cleanup_enabled)?;
         let asr = AsrSidecar::spawn(root)?;
-        let polisher = PolishSidecar::spawn(root)?
-            .context("the required local correction runtime could not start")?;
 
         Ok(Self {
             asr,
-            polisher: Some(polisher),
+            polisher,
             asr_ready: false,
             llm_ready: false,
+            cleanup_enabled,
             root: root.to_path_buf(),
             started: Instant::now(),
             polish_requests: Vec::new(),
@@ -125,7 +127,40 @@ impl Engine {
     }
 
     pub fn stacks_ready(&self) -> bool {
-        self.asr_ready && self.llm_ready
+        models_ready(self.asr_ready, self.llm_ready, self.cleanup_enabled)
+    }
+
+    pub fn set_cleanup_enabled(&mut self, enabled: bool) -> Result<()> {
+        if enabled == self.cleanup_enabled {
+            self.all_ready_emitted = false;
+            return Ok(());
+        }
+        if self.polish_requests.iter().any(|request| {
+            !request
+                .id
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("__phonon_startup_")
+        }) {
+            bail!("finish the current dictation before changing AI cleanup");
+        }
+        // Create the replacement first; if it fails, keep the current mode.
+        let replacement = start_cleanup(&self.root, enabled)?;
+        if let Some(mut polisher) = self.polisher.take() {
+            polisher.shutdown();
+        }
+        self.polisher = replacement;
+        self.cleanup_enabled = enabled;
+        self.llm_ready = false;
+        self.llm_primed = false;
+        self.llm_primed_at = None;
+        self.startup_audio_demo_sent = false;
+        self.startup_audio_demo_passed = false;
+        self.startup_dictionary_demo_sent = false;
+        self.polish_requests.clear();
+        self.all_ready_emitted = false;
+        self.pending_events.push(cleanup_stream(enabled));
+        Ok(())
     }
 
     pub fn poll(&mut self) -> Vec<EngineEvent> {
@@ -354,11 +389,11 @@ impl Engine {
                                     &corrected.text,
                                     corrected.applied.clone(),
                                     request.screen_context_terms,
-                                    data::LlmMetadata {
+                                    Some(data::LlmMetadata {
                                         latency_ms,
                                         ttft_ms,
                                         tokens_per_second: tok_s,
-                                    },
+                                    }),
                                 ) {
                                     out.push(EngineEvent::Error {
                                         id: id.clone(),
@@ -407,7 +442,7 @@ impl Engine {
                     source_text: startup_text.clone(),
                     screen_context_terms: Vec::new(),
                 });
-                let startup_input = self.dictionary.prepare_polish_input(&startup_text);
+                let startup_input = self.dictionary.apply_exact_replacements(&startup_text).text;
                 if let Err(error) = polisher.polish(&startup_input) {
                     self.polish_requests.pop();
                     out.push(EngineEvent::Error {
@@ -422,7 +457,7 @@ impl Engine {
                     name: "llm".into(),
                     state: "loading".into(),
                     pct: 0.94,
-                    msg: "running full dictionary correction demo".into(),
+                    msg: "checking S1-mini by Superwhisper transcript cleanup".into(),
                     load_ms: None,
                 });
                 self.polish_requests.push(PolishRequest {
@@ -430,8 +465,7 @@ impl Engine {
                     source_text: STARTUP_LLM_TEXT.into(),
                     screen_context_terms: Vec::new(),
                 });
-                let startup_input =
-                    startup_demo_dictionary().prepare_polish_input(STARTUP_LLM_TEXT);
+                let startup_input = STARTUP_LLM_TEXT;
                 if let Err(error) = polisher.polish(&startup_input) {
                     self.polish_requests.pop();
                     out.push(EngineEvent::Error {
@@ -497,22 +531,27 @@ impl Engine {
     pub fn polish_with_context(
         &mut self,
         text: &str,
-        screen_text: &str,
+        _screen_text: &str,
         id: Option<&str>,
     ) -> Result<()> {
+        if !self.cleanup_enabled {
+            if let Some(recording_id) = id.and_then(|id| self.recording_ids.get(id)) {
+                update_recording_final(recording_id, text, Vec::new(), Vec::new(), None)?;
+            }
+            self.pending_events.push(uncleaned_result(text, id));
+            return Ok(());
+        }
         let Some(polisher) = self.polisher.as_mut() else {
             bail!("the required local correction model is unavailable");
         };
         if !self.llm_ready {
             bail!("the correction model is not ready yet");
         }
-        let input = self
-            .dictionary
-            .prepare_polish_input_with_context(text, screen_text);
+        let input = self.dictionary.apply_exact_replacements(text).text;
         self.polish_requests.push(PolishRequest {
             id: id.map(str::to_string),
             source_text: text.to_string(),
-            screen_context_terms: self.dictionary.screen_confirmed_terms(text, screen_text),
+            screen_context_terms: Vec::new(),
         });
         if let Err(error) = polisher.polish(&input) {
             self.polish_requests.pop();
@@ -544,13 +583,13 @@ fn update_recording_final(
     final_text: &str,
     corrections: Vec<data::AppliedCorrection>,
     screen_context_terms: Vec<String>,
-    llm: data::LlmMetadata,
+    llm: Option<data::LlmMetadata>,
 ) -> Result<()> {
     let mut recording = data::load_recording_by_id(recording_id)?;
     recording.final_transcript = final_text.trim().to_string();
     recording.dictionary_corrections = corrections;
     recording.screen_context_terms = screen_context_terms;
-    recording.llm = Some(llm);
+    recording.llm = llm;
     data::save_recording(&recording)
 }
 
@@ -560,6 +599,64 @@ fn safe_polish_output(
     polished: &str,
 ) -> data::CorrectionResult {
     data::safe_polish_output(dictionary, source, polished)
+}
+
+fn models_ready(asr_ready: bool, llm_ready: bool, cleanup_enabled: bool) -> bool {
+    asr_ready && (!cleanup_enabled || llm_ready)
+}
+
+fn start_cleanup(root: &Path, enabled: bool) -> Result<Option<PolishSidecar>> {
+    if !enabled {
+        return Ok(None);
+    }
+    if !polish_available(root) {
+        bail!("the local correction runtime is missing; turn off AI cleanup to use Parakeet only");
+    }
+    PolishSidecar::spawn(root)?
+        .context("the local correction runtime could not start")
+        .map(Some)
+}
+
+fn cleanup_stream(enabled: bool) -> EngineEvent {
+    EngineEvent::Stream {
+        name: "llm".into(),
+        state: if enabled { "loading" } else { "disabled" }.into(),
+        pct: if enabled { 0.05 } else { 1.0 },
+        msg: if enabled {
+            "starting the correction model"
+        } else {
+            "AI cleanup off — Parakeet only"
+        }
+        .into(),
+        load_ms: None,
+    }
+}
+
+fn uncleaned_result(text: &str, id: Option<&str>) -> EngineEvent {
+    EngineEvent::PolishResult {
+        id: id.map(str::to_owned),
+        text: text.to_owned(),
+        latency_ms: 0.0,
+        ttft_ms: 0.0,
+        tok_s: 0.0,
+    }
+}
+
+fn cleanup_setting() -> Result<bool> {
+    if let Ok(value) = std::env::var("PHONON_AI_CLEANUP") {
+        return match value.as_str() {
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
+            _ => bail!("PHONON_AI_CLEANUP must be true or false"),
+        };
+    }
+    let path = data::settings_path()?;
+    if !path.is_file() {
+        return Ok(true);
+    }
+    // Read without rewriting: native settings contain additional controls.
+    let settings: data::SettingsFile = serde_json::from_slice(&std::fs::read(path)?)?;
+    Ok(settings.ai_cleanup)
 }
 
 fn normalized_words(text: &str) -> Vec<String> {
@@ -584,28 +681,9 @@ fn asr_smoke_passed(text: &str) -> bool {
             .any(|word| word == "fluid" || word == "flamid" || word == "fluidvoice")
 }
 
-/// The two terms the dictionary demo needs, independent of what the user has
-/// taught. A fresh install has an empty dictionary, so asserting against the
-/// real one made the startup gate unpassable on a clean Mac; the demo has to
-/// prove the retrieval path works, not that this user says "cuBLAS".
-fn startup_demo_dictionary() -> data::DictionaryFile {
-    let entry = |phrase: &str| data::DictionaryEntry {
-        phrase: phrase.to_string(),
-        replacement: None,
-        spoken_forms: Vec::new(),
-        source: "startup-demo".into(),
-        starred: false,
-        usage_count: 0,
-    };
-    data::DictionaryFile {
-        entries: vec![entry("cuBLAS"), entry("cuDNN")],
-        ..Default::default()
-    }
-}
-
 fn llm_smoke_passed(text: &str) -> bool {
     let words = normalized_words(data::extract_transcript_payload(text));
-    ["difference", "cublas", "cudnn"]
+    ["send", "report", "friday"]
         .iter()
         .all(|expected| words.iter().any(|word| word == expected))
 }
@@ -644,13 +722,7 @@ pub fn run_engine_serve() -> Result<()> {
         "pct": 0.05,
         "msg": "starting parakeet"
     }));
-    emit(&json!({
-        "type": "stream",
-        "name": "llm",
-        "state": "loading",
-        "pct": 0.05,
-        "msg": "starting the correction model"
-    }));
+    emit_engine_event(&cleanup_stream(eng.cleanup_enabled));
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<String>();
     thread::spawn(move || {
@@ -695,8 +767,27 @@ pub fn run_engine_serve() -> Result<()> {
                             "type": "status",
                             "asr_ready": eng.asr_ready,
                             "llm_ready": eng.llm_ready,
+                            "ai_cleanup": eng.cleanup_enabled,
                             "stacks_ready": eng.stacks_ready(),
                         }));
+                    }
+                    "set_cleanup" => {
+                        match v.get("enabled").and_then(|value| value.as_bool()) {
+                            Some(enabled) => {
+                                if let Err(error) = eng.set_cleanup_enabled(enabled) {
+                                    emit(
+                                        &json!({"type":"error","id":"__cleanup_setting__","msg":format!("{error:#}")}),
+                                    );
+                                    if eng.stacks_ready() {
+                                        emit_engine_event(&EngineEvent::AllReady);
+                                    }
+                                }
+                            }
+                            None => emit(
+                                &json!({"type":"error","id":"__cleanup_setting__","msg":"enabled must be a boolean"}),
+                            ),
+                        }
+                        emit(&json!({"type":"cleanup_setting","enabled":eng.cleanup_enabled}));
                     }
                     "transcribe" => {
                         let path = v.get("path").and_then(|x| x.as_str()).unwrap_or("");
@@ -827,6 +918,36 @@ fn emit_engine_event(ev: &EngineEvent) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cleanup_off_needs_no_model_files_and_only_waits_for_speech() {
+        assert!(
+            super::start_cleanup(std::path::Path::new("/no-models-here"), false)
+                .unwrap()
+                .is_none()
+        );
+        assert!(super::models_ready(true, false, false));
+        assert!(!super::models_ready(false, true, false));
+        assert!(!super::models_ready(true, false, true));
+    }
+
+    #[test]
+    fn cleanup_off_preserves_long_transcripts_without_a_token_limit() {
+        let source = "um keep these words exactly as spoken ".repeat(1000) + "last sentence";
+        match super::uncleaned_result(&source, Some("pass")) {
+            super::EngineEvent::PolishResult {
+                text,
+                id,
+                latency_ms,
+                ..
+            } => {
+                assert_eq!(text, source);
+                assert_eq!(id.as_deref(), Some("pass"));
+                assert_eq!(latency_ms, 0.0);
+            }
+            _ => panic!("expected a completed transcript"),
+        }
+    }
+
     use super::{
         asr_smoke_passed, llm_audio_smoke_passed, llm_prime_passed, llm_smoke_passed,
         safe_polish_output,
@@ -852,11 +973,9 @@ mod tests {
             "Hello Flamid Voice.",
             "<phonon_dictionary>\ncanonical_terms: Hello, Fluid Voice"
         ));
+        assert!(llm_smoke_passed("Please send the report by Friday."));
         assert!(llm_smoke_passed(
-            "Do you know the difference between cuBLAS and cuDNN?"
-        ));
-        assert!(llm_smoke_passed(
-            "<phonon_dictionary>ignored</phonon_dictionary>\n<transcript>Do you know the difference between cuBLAS and cuDNN?</transcript>"
+            "<phonon_dictionary>ignored</phonon_dictionary>\n<transcript>Please send the report by Friday.</transcript>"
         ));
         assert!(!llm_smoke_passed("Test."));
         assert!(llm_prime_passed("Hello Fluid Voice startup prime."));

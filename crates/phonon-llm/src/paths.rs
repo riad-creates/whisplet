@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 /// Pinned correction model. The revision is exact so an upstream re-upload
 /// cannot change what shipped users run.
-pub const POLISH_MODEL_ID: &str = "mlx-community/gemma-4-e2b-it-4bit";
-pub const POLISH_MODEL_REVISION: &str = "238767527555cb75a05732a84dff5d6ba0dd6809";
+pub const POLISH_MODEL_ID: &str = "mlx-community/S1-mini-MLX-4bit";
+pub const POLISH_MODEL_REVISION: &str = "5cbd7aec3401144f88a331d385c40b65fd2548eb";
 /// Pinned runtime, for the same reason.
 pub const POLISH_RUNTIME_REQUIREMENT: &str = "mlx-lm==0.31.3";
 
@@ -12,11 +12,10 @@ pub fn polish_script(root: &Path) -> PathBuf {
 }
 
 pub fn polish_prompt(root: &Path) -> PathBuf {
-    root.join("prompts/polish_v2.txt")
+    root.join("prompts/s1_mini.txt")
 }
 
-/// Whether the correction stage's own files are present. The stage itself is
-/// mandatory; this is not a switch for running without it.
+/// Whether the optional correction stage's own files are present.
 pub fn polish_available(root: &Path) -> bool {
     polish_script(root).is_file() && polish_prompt(root).is_file()
 }

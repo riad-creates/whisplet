@@ -25,6 +25,8 @@ use phonon_asr::StderrTail;
 use serde::Deserialize;
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -320,6 +322,7 @@ pub struct PolishSidecar {
     child: Child,
     stdin: ChildStdin,
     rx: Receiver<PolishEvent>,
+    stopped: bool,
 }
 
 /// The shipped correction stage. `Ok(None)` means its own files are absent.
@@ -382,7 +385,9 @@ fn fluid_command(root: &Path, use_mtp: bool) -> Result<Command> {
                 .arg("6");
         }
     }
-    command.arg("--system-prompt-file").arg(polish_prompt(root));
+    command
+        .arg("--system-prompt-file")
+        .arg(root.join("prompts/polish_v2.txt"));
     Ok(command)
 }
 
@@ -391,6 +396,10 @@ impl PolishSidecar {
         let Some(mut command) = polish_command(root)? else {
             return Ok(None);
         };
+        // uv launches Python as a child. Own the entire process group so
+        // disabling cleanup also releases the model held by that child.
+        #[cfg(unix)]
+        command.process_group(0);
         Self::attach(command.spawn().context("spawn polish")?).map(Some)
     }
 
@@ -444,7 +453,12 @@ impl PolishSidecar {
                 let _ = tx.send(PolishEvent::Error { msg });
             }
         });
-        Ok(Self { child, stdin, rx })
+        Ok(Self {
+            child,
+            stdin,
+            rx,
+            stopped: false,
+        })
     }
 
     pub fn poll(&self) -> Vec<PolishEvent> {
@@ -462,7 +476,17 @@ impl PolishSidecar {
     }
 
     pub fn shutdown(&mut self) {
+        if self.stopped {
+            return;
+        }
+        self.stopped = true;
         let _ = writeln!(self.stdin, "{}", json!({"command":"shutdown"}));
+        #[cfg(unix)]
+        // SAFETY: spawn created a fresh group whose ID is this child's PID.
+        // Stop the group before reaping its leader, so its ID cannot be reused.
+        unsafe {
+            libc::killpg(self.child.id() as libc::pid_t, libc::SIGKILL);
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -470,6 +494,6 @@ impl PolishSidecar {
 
 impl Drop for PolishSidecar {
     fn drop(&mut self) {
-        let _ = self.child.kill();
+        self.shutdown();
     }
 }

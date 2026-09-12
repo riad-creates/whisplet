@@ -9,6 +9,7 @@
 .DS_Store
 .env
 .env.*
+/.phonon-local-signing-identity
 .vercel
 /AGENTS.md
 /CLAUDE.md

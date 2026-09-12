@@ -13,6 +13,7 @@ use std::time::Instant;
 pub const ASR_MODEL_ID: &str = "mlx-community/parakeet-tdt-0.6b-v2";
 pub const ASR_MODEL_REVISION: &str = "8ae155301e23d820d82aa60d24817c900e69e487";
 pub const ASR_RUNTIME_REQUIREMENT: &str = "parakeet-mlx==0.5.2";
+pub const TOKENIZER_RUNTIME_REQUIREMENT: &str = "sentencepiece==0.2.2";
 
 /// Pinned interpreter for both sidecars. Without this, uv falls back to whatever
 /// `python3` it finds, which on a Mac with no developer tooling is the system
@@ -118,7 +119,11 @@ impl AsrSidecar {
                 PYTHON_REQUIREMENT,
                 "--with",
                 ASR_RUNTIME_REQUIREMENT,
+                "--with",
+                TOKENIZER_RUNTIME_REQUIREMENT,
                 "python",
+                // Imported helpers live inside the signed app bundle.
+                "-B",
             ])
             .arg(&script)
             .args(["--model", ASR_MODEL_ID, "--revision", ASR_MODEL_REVISION])

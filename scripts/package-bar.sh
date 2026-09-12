@@ -4,7 +4,15 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 project_dir=$(cd "$script_dir/.." && pwd)
 bar_dir="$project_dir/bar"
-app_path="$bar_dir/dist/Phonon.app"
+app_name=${PHONON_APP_NAME:-Phonon}
+bundle_id=${PHONON_BUNDLE_ID:-com.infatoshi.phonon}
+app_path="$bar_dir/dist/$app_name.app"
+
+# Local installs must not silently lose the identity attached to macOS grants.
+if [[ "$bundle_id" == "local.tobi.phonon" && "${PHONON_CODESIGN_IDENTITY:-}" == "-" ]]; then
+	printf 'Ad hoc signing invalidates Phonon Local permissions on rebuild. Use scripts/package-local.sh with a persistent certificate.\n' >&2
+	exit 1
+fi
 
 cargo build --release --package phonon-cli --bin phonon --manifest-path "$project_dir/Cargo.toml"
 swift build --disable-sandbox -c release --package-path "$bar_dir"
@@ -17,6 +25,9 @@ mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Helpers" \
 	"$staged_app/Contents/Resources/sidecar" "$staged_app/Contents/Resources/assets" \
 	"$staged_app/Contents/Resources/prompts" "$staged_app/Contents/Resources/licenses/uv"
 cp "$bar_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle_id" "$staged_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName $app_name" "$staged_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $app_name" "$staged_app/Contents/Info.plist"
 cp "$bin_dir/PhononBar" "$staged_app/Contents/MacOS/PhononBar"
 cp "$project_dir/target/release/phonon" "$staged_app/Contents/Helpers/phonon"
 uv_bin=${PHONON_UV_BIN:-$(command -v uv || true)}
@@ -26,12 +37,18 @@ if [[ -z "$uv_bin" || ! -x "$uv_bin" ]]; then
 fi
 cp -L "$uv_bin" "$staged_app/Contents/Helpers/uv"
 cp "$project_dir/sidecar/asr_server.py" "$staged_app/Contents/Resources/sidecar/asr_server.py"
+cp "$project_dir/sidecar/dictionary_bias.py" "$staged_app/Contents/Resources/sidecar/dictionary_bias.py"
 cp "$project_dir/sidecar/polish_server.py" "$staged_app/Contents/Resources/sidecar/polish_server.py"
 cp "$project_dir/assets/startup.wav" "$staged_app/Contents/Resources/assets/startup.wav"
 cp "$project_dir/assets/record_start.wav" "$staged_app/Contents/Resources/assets/record_start.wav"
 cp "$project_dir/assets/record_stop.wav" "$staged_app/Contents/Resources/assets/record_stop.wav"
 cp "$project_dir/assets/english_words.txt" "$staged_app/Contents/Resources/assets/english_words.txt"
 cp "$project_dir/prompts/polish_v2.txt" "$staged_app/Contents/Resources/prompts/polish_v2.txt"
+cp "$project_dir/prompts/s1_mini.txt" "$staged_app/Contents/Resources/prompts/s1_mini.txt"
+mkdir -p "$staged_app/Contents/Resources/licenses/s1-mini"
+cp "$project_dir/third_party/s1-mini/LICENSE" "$staged_app/Contents/Resources/licenses/s1-mini/LICENSE"
+mkdir -p "$staged_app/Contents/Resources/licenses/parakeet-mlx"
+cp "$project_dir/third_party/parakeet-mlx/LICENSE" "$staged_app/Contents/Resources/licenses/parakeet-mlx/LICENSE"
 cp "$project_dir/third_party/uv/LICENSE-APACHE" "$project_dir/third_party/uv/LICENSE-MIT" \
 	"$staged_app/Contents/Resources/licenses/uv/"
 "$script_dir/make-app-icon.sh" "$staged_app/Contents/Resources/Phonon.icns"
@@ -50,6 +67,10 @@ if [[ -z "$identity" ]]; then
 		head -n 1)
 fi
 if [[ -z "$identity" ]]; then
+	if [[ "$bundle_id" == "local.tobi.phonon" ]]; then
+		printf 'No signing certificate available. Refusing an ad hoc Phonon Local update; use scripts/package-local.sh.\n' >&2
+		exit 1
+	fi
 	identity=-
 fi
 
@@ -62,7 +83,7 @@ codesign --force --sign "$identity" --options runtime "${timestamp_args[@]}" \
 	"$staged_app/Contents/Helpers/uv"
 codesign --force --sign "$identity" --options runtime "${timestamp_args[@]}" \
 	"$staged_app/Contents/Helpers/phonon"
-codesign --force --sign "$identity" --identifier com.infatoshi.phonon \
+codesign --force --sign "$identity" --identifier "$bundle_id" \
 	--options runtime "${timestamp_args[@]}" \
 	--entitlements "$bar_dir/Resources/Phonon.entitlements" "$staged_app"
 codesign --verify --deep --strict "$staged_app"

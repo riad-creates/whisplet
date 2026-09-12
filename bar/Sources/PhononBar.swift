@@ -1,6 +1,6 @@
 // Phonon — native macOS app plus a bottom-anchored dictation capsule.
 //
-// Idle: tiny warm bar. Hold Option → the same bar expands. Key-up → it breathes.
+// Idle: outlined pill above the Dock. Recording expands into a live waveform.
 // Done → type text and return to idle.
 //
 // First-pass fix: wait for warm engine, pre-warm mic, queue work until ready.
@@ -70,14 +70,29 @@ final class PillState: ObservableObject {
         case idle
         case listening
         case working
+        case notice
     }
 
     @Published var mode: Mode = .hidden
     @Published var level = 0.0
+    @Published private(set) var waveform = Array(repeating: 0.0, count: 24)
     @Published var streamingPreviewEnabled = true
     @Published var previewText = ""
     @Published var previewStage = "Listening"
+    @Published var notice = ""
     @Published var panelHeight: CGFloat = 116
+
+    func resetWaveform() {
+        level = 0
+        waveform = Array(repeating: 0, count: 24)
+    }
+
+    func receiveAmplitude(_ amplitude: Double) {
+        let sample = amplitude.isFinite ? min(1, max(0, amplitude)) : 0
+        level = sample
+        waveform.removeFirst()
+        waveform.append(sample)
+    }
 }
 
 struct ModelLoadStream: Identifiable {
@@ -93,7 +108,7 @@ struct ModelLoadStream: Identifiable {
 final class ModelStartupState: ObservableObject {
     @Published private(set) var streams = [
         ModelLoadStream(id: "asr", title: "Speech"),
-        ModelLoadStream(id: "llm", title: "Correction model"),
+        ModelLoadStream(id: "llm", title: "S1-mini by Superwhisper"),
     ]
     @Published private(set) var ready = false
 
@@ -117,6 +132,12 @@ final class ModelStartupState: ObservableObject {
 
     func markReady() {
         ready = true
+    }
+
+    func markCleanupChanging() {
+        ready = false
+        apply(name: "llm", state: "loading", progress: 0,
+              detail: "Updating cleanup setting", loadMs: nil)
     }
 
     func markRestarting() {
@@ -255,7 +276,9 @@ enum ShortcutPolicy {
     }
 
     static func allows(mode: String, source: String) -> Bool {
-        sources(for: mode).contains(source)
+        // A click is an explicit recording action, independent of which
+        // physical keyboard shortcuts the user has enabled.
+        source == "menu" || sources(for: mode).contains(source)
     }
 }
 
@@ -514,77 +537,86 @@ enum ScreenContextCapture {
 
 struct PillView: View {
     @ObservedObject var state: PillState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-            let energy = visualEnergy(at: context.date)
-            let size = shellSize(energy: energy)
+        let size = shellSize
+        ZStack {
             Capsule(style: .continuous)
                 .fill(
                     LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0),
-                            .init(
-                                color: Color(red: 0.42, green: 0.12, blue: 0.035)
-                                    .opacity(warmth(energy)),
-                                location: 0.5),
-                            .init(color: .black, location: 1),
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
+                        colors: [Color(white: 0.10), Color(white: 0.035)],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
-                .shadow(
-                    color: Color(red: 0.55, green: 0.16, blue: 0.04)
-                        .opacity(state.mode == .idle ? 0 : 0.22 + energy * 0.12),
-                    radius: 4,
-                    y: 1
-                )
-                .frame(width: size.width, height: size.height)
-                .frame(width: 80, height: 16, alignment: .bottom)
-                .opacity(state.mode == .hidden ? 0 : 1)
-                .animation(
-                    .spring(response: 0.22, dampingFraction: 0.86),
-                    value: size
-                )
+            Capsule(style: .continuous)
+                .strokeBorder(.white.opacity(state.mode == .idle ? 0.48 : 0.24), lineWidth: 1)
+
+            if state.mode == .listening {
+                HStack(spacing: 11) {
+                    Circle()
+                        .fill(Color(red: 1, green: 0.48, blue: 0.25))
+                        .frame(width: 5, height: 5)
+                    HStack(spacing: 2) {
+                        ForEach(state.waveform.indices, id: \.self) { index in
+                            Capsule()
+                                .fill(.white.opacity(0.45 + 0.55 * Double(index) / 23))
+                                .frame(width: 3, height: 3 + 23 * sqrt(state.waveform[index]))
+                        }
+                    }
+                    .frame(height: 26)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: state.waveform)
+                }
+                .transition(.opacity)
+            } else if state.mode == .working {
+                HStack(spacing: 8) {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+                        Circle()
+                            .trim(from: 0, to: 0.72)
+                            .stroke(.white.opacity(0.85), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                            .frame(width: 12, height: 12)
+                            .rotationEffect(.degrees(reduceMotion ? 0 :
+                                context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * 360))
+                    }
+                    Text("Processing")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .transition(.opacity)
+            } else if state.mode == .notice {
+                Text(state.notice)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.84), value: state.mode)
+        .padding(.bottom, 6)
+        .frame(width: 200, height: 52, alignment: .bottom)
+        .opacity(state.mode == .hidden ? 0 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        switch state.mode {
+        case .hidden, .idle: return "Phonon ready"
+        case .listening: return "Phonon recording"
+        case .working: return "Phonon processing"
+        case .notice: return state.notice
         }
     }
 
-    private func visualEnergy(at date: Date) -> Double {
+    private var shellSize: CGSize {
         switch state.mode {
-        case .hidden, .idle:
-            return 0
-        case .listening:
-            return min(1, max(0.08, state.level))
-        case .working:
-            let breath = (sin(date.timeIntervalSinceReferenceDate * .pi * 2 / 1.6) + 1) / 2
-            return 0.18 + breath * 0.18
-        }
-    }
-
-    private func warmth(_ energy: Double) -> Double {
-        switch state.mode {
-        case .hidden, .idle:
-            return 0
-        case .listening, .working:
-            return 0.50 + energy * 0.38
-        }
-    }
-
-    private func shellSize(energy: Double) -> CGSize {
-        switch state.mode {
-        case .hidden, .idle:
-            return CGSize(width: 40, height: 8)
-        case .listening:
-            return CGSize(
-                width: 66 + 14 * energy,
-                height: 13 + 3 * energy
-            )
-        case .working:
-            return CGSize(
-                width: 38 + 10 * energy,
-                height: 10 + 3 * energy
-            )
+        case .hidden, .idle: return CGSize(width: 64, height: 10)
+        case .listening: return CGSize(width: 176, height: 40)
+        case .working: return CGSize(width: 132, height: 32)
+        case .notice: return CGSize(width: 188, height: 32)
         }
     }
 }
@@ -611,19 +643,15 @@ final class PillPanel: NSPanel {
         ignoresMouseEvents = true
     }
 
-    static func screenFrame() -> NSRect {
-        let screen =
-            NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
+    static var pointerScreen: NSScreen? {
+        NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
             ?? NSScreen.main
-        return screen?.frame ?? .zero
     }
 
-    static func frame(size: NSSize) -> NSRect {
-        PanelGeometry.restingFrame(screen: screenFrame(), size: size)
-    }
-
-    static func hiddenFrame(size: NSSize) -> NSRect {
-        PanelGeometry.hiddenFrame(screen: screenFrame(), size: size)
+    static func frame(size: NSSize, on screen: NSScreen? = nil) -> NSRect {
+        let screen = screen ?? pointerScreen
+        return PanelGeometry.restingFrame(
+            screen: screen?.frame ?? .zero, visibleFrame: screen?.visibleFrame, size: size)
     }
 }
 
@@ -663,12 +691,13 @@ final class CueSounds {
 }
 
 enum PanelGeometry {
-    static let bottomInset: CGFloat = 14
+    static let bottomInset: CGFloat = 8
 
-    static func restingFrame(screen: NSRect, size: NSSize) -> NSRect {
+    static func restingFrame(screen: NSRect, visibleFrame: NSRect? = nil, size: NSSize) -> NSRect {
+        let usable = visibleFrame ?? screen
         return NSRect(
-            x: screen.midX - size.width / 2,
-            y: screen.minY + bottomInset,
+            x: max(usable.minX, min(screen.midX - size.width / 2, usable.maxX - size.width)),
+            y: max(screen.minY, usable.minY) + bottomInset,
             width: size.width,
             height: size.height
         )
@@ -696,7 +725,7 @@ final class EngineClient {
     var onEvent: (([String: Any]) -> Void)?
     var onExit: (() -> Void)?
 
-    func start() throws {
+    func start(cleanupEnabled: Bool) throws {
         readSource?.cancel()
         readSource = nil
         try? stdin?.close()
@@ -709,6 +738,7 @@ final class EngineClient {
         p.executableURL = URL(fileURLWithPath: phonon)
         p.arguments = ["engine"]
         var environment = ProcessInfo.processInfo.environment
+        environment["PHONON_AI_CLEANUP"] = cleanupEnabled ? "1" : "0"
         if let resources = Bundle.main.resourcePath {
             environment["PHONON_ROOT"] = resources
         }
@@ -845,10 +875,13 @@ final class MicRecorder {
 
     private func ensureHardwareRunning() throws {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        if status == .denied || status == .restricted {
+        guard status == .authorized else {
             throw NSError(
                 domain: "PhononBar", code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"])
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Grant microphone access from Home before recording"
+                ])
         }
 
         let device = CoreAudioInputDevices.resolve(
@@ -1374,6 +1407,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let modelStartupState = ModelStartupState()
     private let appStore = NativeAppStore()
     private var panel: PillPanel?
+    private var panelPositionTimer: Timer?
     private let cues = CueSounds()
     private var modelStartupWindow: NSPanel?
     private var mainWindow: NSWindow?
@@ -1382,10 +1416,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var streamingMenuItem: NSMenuItem?
     private var microphoneMenuItem: NSMenuItem?
+    private var recordingMenuItems: [NSMenuItem] = []
     private var pass = 0
     private var activeId: String?
     private var rawText = ""
-    private var isRecording = false
+    private var isRecording = false {
+        didSet {
+            for item in recordingMenuItems {
+                item.title = isRecording ? "Stop Recording" : "Start Recording"
+            }
+        }
+    }
     private var optionDown = false
     private var fnDown = false
     private var eventTap: CFMachPort?
@@ -1397,7 +1438,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// First dict often lands before models are warm — hold until ready.
     private var pendingTranscribe: (path: String, id: String)?
     private var submittedTranscribe: (path: String, id: String)?
-    private var processing = false
+    private var processing = false {
+        didSet {
+            if !processing {
+                DispatchQueue.main.async { [weak self] in self?.applyCleanupSettingIfIdle() }
+            }
+        }
+    }
+    private var engineCleanupEnabled: Bool?
+    private var cleanupChangePending = false
+    private var cleanupChangeFailed = false
+    private var appliedSettings: NativeSettings?
     private var streamActive = false
     private var previewPolishInput: String?
     private var pendingPreviewText: String?
@@ -1452,7 +1503,11 @@ final class AppController: NSObject, NSApplicationDelegate {
             } else {
                 state.streamingPreviewEnabled = demo != "compact"
                 showListening()
-                state.level = 0.72
+                for level in [0.08, 0.13, 0.22, 0.42, 0.65, 0.80, 0.48, 0.25,
+                              0.10, 0.06, 0.19, 0.36, 0.70, 0.95, 0.75, 0.47,
+                              0.25, 0.12, 0.08, 0.21, 0.52, 0.72, 0.46, 0.24] {
+                    state.receiveAmplitude(level)
+                }
                 if state.streamingPreviewEnabled {
                     setPreview(
                         ProcessInfo.processInfo.environment["PHONON_UI_DEMO_TEXT"]
@@ -1489,6 +1544,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         host.view.frame = NSRect(origin: .zero, size: size)
         panel.contentView = host.view
         self.panel = panel
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(refreshPanelPosition),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(refreshPanelPosition),
+            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        // Dock resizing and auto-hide changes do not always post a screen-change
+        // notification. Recheck the usable frame without moving to the pointer.
+        panelPositionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshPanelPosition() }
+        }
     }
 
     private func setupModelStartupWindow() {
@@ -1549,8 +1615,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(
             NSMenuItem(title: "Open Phonon…", action: #selector(showMainWindow), keyEquivalent: ","))
         menu.addItem(.separator())
-        menu.addItem(
-            NSMenuItem(title: "Toggle record", action: #selector(toggleRecord), keyEquivalent: "r"))
+        menu.addItem(makeRecordingMenuItem())
         let previewItem = NSMenuItem(
             title: "Streaming", action: #selector(toggleStreamingPreview), keyEquivalent: ""
         )
@@ -1590,9 +1655,14 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func applySettings() {
-        if isRecording {
+        var previous = appliedSettings ?? appStore.settings
+        previous.aiCleanup = appStore.settings.aiCleanup
+        previous.dictionaryRecognition = appStore.settings.dictionaryRecognition
+        if isRecording && previous != appStore.settings {
             stopDictation(source: "settings")
         }
+        appliedSettings = appStore.settings
+        applyCleanupSettingIfIdle()
         state.streamingPreviewEnabled = appStore.settings.streaming
         streamingMenuItem?.state = state.streamingPreviewEnabled ? .on : .off
         if appStore.settings.instantMic {
@@ -1601,6 +1671,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         } else if !isRecording {
             recorder.releaseHardware()
         }
+    }
+
+    private func applyCleanupSettingIfIdle() {
+        guard !terminating, !isRecording, !processing, !cleanupChangePending,
+              let enabled = engineCleanupEnabled,
+              enabled != appStore.settings.aiCleanup else { return }
+        engineCleanupEnabled = appStore.settings.aiCleanup
+        cleanupChangePending = true
+        cleanupChangeFailed = false
+        enginesReady = false
+        appStore.engineReady = false
+        appStore.engineMessage = "Updating cleanup setting"
+        modelStartupState.markCleanupChanging()
+        engine.send(["cmd": "set_cleanup", "enabled": appStore.settings.aiCleanup])
     }
 
     private func promptPermissions() {
@@ -1616,7 +1700,13 @@ final class AppController: NSObject, NSApplicationDelegate {
             self?.recoverFromEngineExit()
         }
         do {
-            try engine.start()
+            let enabled = (isRecording || processing)
+                ? (engineCleanupEnabled ?? appStore.settings.aiCleanup)
+                : appStore.settings.aiCleanup
+            try engine.start(cleanupEnabled: enabled)
+            engineCleanupEnabled = enabled
+            cleanupChangePending = false
+            appliedSettings = appStore.settings
         } catch {
             NSLog("phonon engine failed: \(error.localizedDescription)")
             scheduleEngineRestart()
@@ -1651,6 +1741,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func handleEngine(_ ev: [String: Any]) {
         let type = ev["type"] as? String ?? ""
         switch type {
+        case "cleanup_setting":
+            if let enabled = ev["enabled"] as? Bool {
+                engineCleanupEnabled = enabled
+                cleanupChangePending = false
+                if cleanupChangeFailed {
+                    appStore.updateSettings { $0.aiCleanup = enabled }
+                    appliedSettings = appStore.settings
+                }
+                cleanupChangeFailed = false
+                applyCleanupSettingIfIdle()
+            }
         case "stream":
             appStore.engineMessage = ev["msg"] as? String ?? "Loading local models"
             modelStartupState.apply(
@@ -1661,6 +1762,8 @@ final class AppController: NSObject, NSApplicationDelegate {
                 loadMs: ev["load_ms"] as? Double
             )
         case "ready":
+            // A previous mode may finish just after the user requests another.
+            guard !cleanupChangePending || cleanupChangeFailed else { return }
             enginesReady = true
             appStore.engineReady = true
             appStore.engineMessage = "Ready"
@@ -1719,7 +1822,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     NSLog("phonon: empty ASR for \(pid)")
                     processing = false
                     finishRecordingRetention()
-                    hideAfter(0.1)
+                    showNotice("No speech detected")
                     return
                 }
                 submitFinalPolish(text, id: pid)
@@ -1780,6 +1883,10 @@ final class AppController: NSObject, NSApplicationDelegate {
             let msg = ev["msg"] as? String ?? "error"
             appStore.lastError = msg
             NSLog("phonon engine error: \(msg)")
+            if ev["id"] as? String == "__cleanup_setting__" {
+                cleanupChangeFailed = true
+                return
+            }
             if let id = ev["id"] as? String, id.contains(":preview:") {
                 guard let activeId, id.hasPrefix("\(activeId):preview:") else { return }
                 previewPolishInput = nil
@@ -1800,7 +1907,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     // MARK: Visibility
 
-    private static let containerSize = NSSize(width: 80, height: 16)
+    private static let containerSize = NSSize(width: 200, height: 52)
 
     private func showIdle() {
         hideWork?.cancel()
@@ -1811,7 +1918,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func showListening() {
         hideWork?.cancel()
-        state.level = 0
+        state.resetWaveform()
         setPreview("", stage: enginesReady ? "Listening" : "Loading speech engine")
         state.mode = .listening
         present()
@@ -1823,6 +1930,13 @@ final class AppController: NSObject, NSApplicationDelegate {
         state.mode = .working
         state.previewStage = "Final pass"
         present()
+    }
+
+    private func showNotice(_ message: String) {
+        state.notice = message
+        state.mode = .notice
+        present()
+        hideAfter(2.5)
     }
 
     private func present() {
@@ -1852,6 +1966,14 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         state.level = 0
         state.mode = .idle
+    }
+
+    @objc private func refreshPanelPosition() {
+        guard let panel, panel.isVisible else { return }
+        let target = PillPanel.frame(size: Self.containerSize, on: panel.screen)
+        if panel.frame != target {
+            panel.setFrame(target, display: false)
+        }
     }
 
     private func hideAfter(_ seconds: TimeInterval) {
@@ -1935,12 +2057,21 @@ final class AppController: NSObject, NSApplicationDelegate {
         toggleRecordFromKeyboard(source: "menu", eventNs: now, callbackNs: now)
     }
 
+    private func makeRecordingMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: "Start Recording", action: #selector(toggleRecord), keyEquivalent: "r")
+        item.keyEquivalentModifierMask = [.command, .shift]
+        item.target = self
+        recordingMenuItems.append(item)
+        return item
+    }
+
     @objc private func toggleStreamingPreview() {
         state.streamingPreviewEnabled.toggle()
         appStore.updateSettings { $0.streaming = state.streamingPreviewEnabled }
         streamingMenuItem?.state = state.streamingPreviewEnabled ? .on : .off
         switch state.mode {
-        case .hidden, .idle, .listening, .working:
+        case .hidden, .idle, .listening, .working, .notice:
             break
         }
     }
@@ -1995,10 +2126,13 @@ final class AppController: NSObject, NSApplicationDelegate {
         lastPreviewPolishInput = ""
         latestAcousticPreview = ""
         screenContextText = ""
-        screenContextReady = !appStore.settings.screenContext
+        // S1-mini's trained input format accepts transcripts, not OCR context.
+        // Preserve the saved preference for compatibility with the original app.
+        let useScreenContext = false
+        screenContextReady = !useScreenContext
         pendingFinalPolish = nil
         screenContextTask?.cancel()
-        if appStore.settings.screenContext {
+        if useScreenContext {
             let contextPass = activeId
             screenContextTask = Task { [weak self] in
                 let text = await ScreenContextCapture.recognizeAllDisplays()
@@ -2017,7 +2151,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         recorder.onAmplitude = { [weak self] a in
             Task { @MainActor in
                 guard let self, self.isRecording else { return }
-                self.state.level = a
+                self.state.receiveAmplitude(a)
             }
         }
         recorder.onStreamPCM16 = { [weak self] pcm in
@@ -2042,7 +2176,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             e2eTrace?.recordingStartedNs = DispatchTime.now().uptimeNanoseconds
         } catch {
             isRecording = false
-            hidePill()
+            showNotice("Microphone unavailable")
+            appStore.lastError = error.localizedDescription
             NSLog("mic: \(error.localizedDescription)")
         }
     }
@@ -2088,7 +2223,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     )
                     // Stay visible briefly so it doesn't feel broken, then hide.
                     self.processing = false
-                    self.hideAfter(0.25)
+                    self.showNotice("No microphone audio")
                     return
                 }
                 self.activeWavPath = path
@@ -2356,6 +2491,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             title: "Settings…", action: #selector(showMainWindow), keyEquivalent: ",")
         settings.target = self
         appMenu.addItem(settings)
+        appMenu.addItem(makeRecordingMenuItem())
         appMenu.addItem(.separator())
         appMenu.addItem(
             withTitle: "Hide Phonon", action: #selector(NSApplication.hide(_:)),
@@ -2437,6 +2573,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        panelPositionTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         terminating = true
         engineRestartWork?.cancel()
         screenContextTask?.cancel()

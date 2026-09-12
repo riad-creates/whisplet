@@ -23,16 +23,23 @@ final class AppDataTests: XCTestCase {
 
         let store = NativeAppStore(supportDirectory: directory)
         XCTAssertTrue(store.settings.instantMic)
+        XCTAssertTrue(store.settings.aiCleanup)
+        XCTAssertTrue(store.settings.dictionaryRecognition)
         XCTAssertEqual(store.settings.shortcutMode, "both")
 
         store.updateSettings {
             $0.instantMic = false
+            $0.aiCleanup = false
+            $0.dictionaryRecognition = false
             $0.shortcutMode = "right_option"
         }
         let saved = try JSONDecoder().decode(
             NativeSettings.self,
             from: Data(contentsOf: directory.appendingPathComponent("settings.json")))
         XCTAssertFalse(saved.instantMic)
+        XCTAssertFalse(saved.aiCleanup)
+        XCTAssertFalse(saved.dictionaryRecognition)
+        XCTAssertFalse(NativeAppStore(supportDirectory: directory).settings.aiCleanup)
         XCTAssertEqual(saved.shortcutMode, "right_option")
         XCTAssertFalse(saved.screenContext)
     }

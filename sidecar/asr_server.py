@@ -11,6 +11,11 @@ import traceback
 import wave
 from pathlib import Path
 
+if __package__:
+    from .dictionary_bias import compile_bias, generate_with_bias, recognition_terms, restore_case, support_directory
+else:
+    from dictionary_bias import compile_bias, generate_with_bias, recognition_terms, restore_case, support_directory
+
 
 def emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
@@ -56,8 +61,12 @@ def read_wav(path: str, sample_rate: int):
     return samples
 
 
-def transcribe_file(model, path: str):
-    """Batch transcription without an ffmpeg dependency where possible."""
+def transcribe_file(model, path: str, bias=None, *, compute_confidence=True, cache_decoder=False):
+    """Batch transcription without ffmpeg where possible.
+
+    compute_confidence and cache_decoder only affect the dictionary decoder; the upstream
+    no-dictionary path is unchanged.
+    """
     import mlx.core as mx
 
     rate = model.preprocessor_config.sample_rate
@@ -70,13 +79,19 @@ def transcribe_file(model, path: str):
     if samples is None:
         # Not something we can decode ourselves; parakeet-mlx will use ffmpeg,
         # and its own error says so plainly when ffmpeg is absent.
-        return model.transcribe(path)
+        if bias is None:
+            return model.transcribe(path)
+        from parakeet_mlx.audio import load_audio
+        samples = load_audio(path, rate)
     from parakeet_mlx.audio import get_logmel
 
     # float32, matching what parakeet-mlx's own loader hands the preprocessor.
     # bfloat16 changes the FFT layout and the mel matmul fails on shape.
     mel = get_logmel(mx.array(samples, dtype=mx.float32), model.preprocessor_config)
-    return model.generate(mel)[0]
+    if bias is None:
+        return model.generate(mel)[0]
+    return generate_with_bias(model, mel, bias, compute_confidence=compute_confidence,
+                              cache_decoder=cache_decoder)[0]
 
 
 def main() -> None:
@@ -113,10 +128,10 @@ def main() -> None:
     )
     t0 = time.perf_counter()
     try:
-        # parakeet_mlx has no revision argument, so pin by resolving the exact
-        # snapshot first and loading it from disk.
+        # Resolve the snapshot so inference and dictionary tokenization use the
+        # same model files, including when this script is run directly.
         source = model_id
-        if revision:
+        if revision or not Path(source).is_dir():
             from huggingface_hub import snapshot_download
 
             source = snapshot_download(model_id, revision=revision)
@@ -150,6 +165,24 @@ def main() -> None:
         }
     )
     emit({"type": "ready", "model": model_id})
+
+    # Dictionary edits and the A/B switch apply to the next final pass without
+    # restarting either model. Startup smoke tests always use the stock decoder.
+    phrase_tokenizer = None
+    cached_terms = None
+    cached_bias = None
+
+    def current_bias():
+        nonlocal phrase_tokenizer, cached_terms, cached_bias
+        terms = recognition_terms(support_directory())
+        if terms != cached_terms:
+            if terms and phrase_tokenizer is None:
+                import sentencepiece as spm
+                phrase_tokenizer = spm.SentencePieceProcessor(
+                    model_file=str(Path(source) / "tokenizer.model"))
+            candidate = compile_bias(terms, phrase_tokenizer, model.vocabulary) if terms else None
+            cached_terms, cached_bias = terms, candidate
+        return cached_bias
 
     streamer = None
     stream_id = None
@@ -276,11 +309,22 @@ def main() -> None:
             )
             t1 = time.perf_counter()
             try:
-                result = transcribe_file(model, path)
+                try:
+                    bias = None if (rid or "").startswith("__phonon_startup_") else current_bias()
+                except (OSError, ValueError, RuntimeError) as error:
+                    # A malformed dictionary must not prevent dictation.
+                    emit({"type": "status", "phase": "dictionary", "pct": 1.0,
+                          "msg": f"Dictionary recognition unavailable; using normal ASR: {error}"})
+                    bias = None
+                # The JSONL result exposes text only, never token confidence.
+                result = transcribe_file(model, path, bias, compute_confidence=False,
+                                         cache_decoder=True)
                 text = getattr(result, "text", None)
                 if text is None:
                     text = str(result)
                 text = (text or "").strip()
+                if bias is not None:
+                    text = restore_case(text, bias.terms)
                 emit(
                     {
                         "type": "result",

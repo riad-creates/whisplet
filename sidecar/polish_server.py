@@ -19,18 +19,18 @@ import sys
 import time
 import traceback
 
-# Gemma 4 opens a thought channel by default even when the template omits
-# `<|think|>`. Prefilling a closed thought channel puts the model straight into
-# the answer channel, which is what a formatter needs: short, literal output.
-NO_THINK_PREFILL = "<|channel>thought\nNo thinking needed.\n<channel|>"
-
-# Hard ceiling on generated tokens. A correction pass never legitimately needs
-# more; without it a bad expansion decodes until the model's own limit and the
-# request feels frozen.
-OUTPUT_TOKEN_CEILING = 256
-OUTPUT_TOKEN_FLOOR = 48
-TRANSCRIPT_PATTERN = re.compile(r"<transcript>(.*?)</transcript>", re.DOTALL)
-LEAKED_MARKER_PATTERN = re.compile(r"<\|?/?(?:channel|turn|think)\|?>?")
+# S1-mini by Superwhisper was trained on this exact prompt and control format.
+SYSTEM_PROMPT = (
+    "You are a text normalizer for speech-to-text transcripts. The input begins "
+    "with a control line specifying the styling, structure, and context settings; "
+    "clean the transcript to match those settings and output only the cleaned text."
+)
+CONTROL = "[Styling: semi-formal] [Structure: prose] [Context: general]"
+# The model card recommends ~1,000 input tokens. Leave room for the template.
+INPUT_CHUNK_TOKENS = 768
+OUTPUT_TOKEN_CEILING = 2048
+OUTPUT_TOKEN_FLOOR = 64
+LEAKED_MARKER_PATTERN = re.compile(r"<think>.*?</think>|<\|[^>]+\|>", re.DOTALL)
 
 
 def emit(obj: dict) -> None:
@@ -38,14 +38,96 @@ def emit(obj: dict) -> None:
     sys.stdout.flush()
 
 
-def transcript_payload(text: str) -> str:
-    """The part of the prompt that bounds a reasonable output length."""
-    match = TRANSCRIPT_PATTERN.search(text)
-    return match.group(1).strip() if match else text.strip()
-
-
 def clean_output(text: str) -> str:
     return LEAKED_MARKER_PATTERN.sub("", text).strip()
+
+
+def split_transcript(text: str, tokenizer, limit: int = INPUT_CHUNK_TOKENS) -> list[str]:
+    """Lossless whitespace boundaries; an oversized single word is passed through."""
+    chunks = []
+    current = ""
+    units = []
+    for sentence in re.split(r"(?<=[.!?])(?=\s)|(?<=\n)(?=\S)", text):
+        if len(tokenizer.encode(sentence)) > limit:
+            units.extend(re.findall(r"\s+|\S+", sentence))
+        elif sentence:
+            units.append(sentence)
+    for piece in units:
+        if current and len(tokenizer.encode(current + piece)) > limit:
+            chunks.append(current)
+            current = ""
+        current += piece
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def build_prompt(tokenizer, transcript: str) -> str:
+    return tokenizer.apply_chat_template(
+        [{"role": "system", "content": SYSTEM_PROMPT},
+         {"role": "user", "content": f"{CONTROL}\n{transcript}"}],
+        add_generation_prompt=True, tokenize=False, enable_thinking=False,
+    )
+
+
+def output_budget(tokenizer, text: str) -> int:
+    return max(OUTPUT_TOKEN_FLOOR, min(
+        OUTPUT_TOKEN_CEILING, math.ceil(len(tokenizer.encode(text)) * 1.8) + 32
+    ))
+
+
+def preserve_chunk(source: str, candidate: str, truncated: bool) -> str:
+    # A token cap is a failed cleanup, never permission to drop the rest of speech.
+    if truncated or not candidate:
+        return source
+    leading = source[:len(source) - len(source.lstrip())]
+    trailing = source[len(source.rstrip()):]
+    return leading + candidate + trailing
+
+
+def normalize(text: str, tokenizer, generate) -> dict:
+    started_at = time.perf_counter()
+    ttft_ms = None
+    generated = 0
+    budget_total = 0
+    fallback_count = 0
+    outputs = []
+    chunks = split_transcript(text, tokenizer)
+    for source in chunks:
+        spoken = source.strip()
+        if not spoken or len(tokenizer.encode(spoken)) > INPUT_CHUNK_TOKENS:
+            outputs.append(source)
+            continue
+        budget = output_budget(tokenizer, spoken)
+        budget_total += budget
+        pieces = []
+        count = 0
+        finish_reason = None
+        for response in generate(build_prompt(tokenizer, spoken), budget):
+            if ttft_ms is None:
+                ttft_ms = (time.perf_counter() - started_at) * 1000
+            pieces.append(response.text)
+            count = response.generation_tokens
+            finish_reason = getattr(response, "finish_reason", None)
+        generated += count
+        candidate = clean_output("".join(pieces))
+        truncated = finish_reason == "length" or count >= budget
+        fallback_count += int(truncated or not candidate)
+        outputs.append(preserve_chunk(source, candidate, truncated))
+    latency_ms = (time.perf_counter() - started_at) * 1000
+    output = "".join(outputs)
+    return {
+        "ok": True, "outputText": output,
+        "diagnostics": {
+            "latencyMilliseconds": latency_ms,
+            "timeToFirstTokenMilliseconds": ttft_ms or 0.0,
+            "tokensPerSecond": generated / (latency_ms / 1000) if latency_ms else 0.0,
+            "generatedTokenCount": generated,
+            "inputCharacterCount": len(text), "outputCharacterCount": len(output),
+            "maxOutputTokenBudget": budget_total,
+            "chunkCount": len(chunks), "fallbackChunkCount": fallback_count,
+        },
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,91 +181,24 @@ def main() -> None:
         return
     load_seconds = time.perf_counter() - started
 
-    system_prompt = ""
     if args.system_prompt_file:
         try:
-            with open(args.system_prompt_file, encoding="utf-8") as handle:
-                system_prompt = handle.read().strip()
-        except OSError as error:
-            emit({"ok": False, "error": f"system prompt unreadable: {error}"})
+            prompt = open(args.system_prompt_file, encoding="utf-8").read().strip()
+            if prompt != SYSTEM_PROMPT:
+                raise ValueError("S1-mini requires the exact Superwhisper system prompt")
+        except (OSError, ValueError) as error:
+            emit({"ok": False, "error": str(error)})
             return
 
     sampler = make_sampler(temp=0.0)
 
-    # The prefill above closes Gemma 4's thought channel. Any model whose chat
-    # template has no channel mechanism would receive it as literal prompt text,
-    # so only prefill when the template actually speaks that protocol.
-    template = getattr(tokenizer, "chat_template", None) or ""
-    think_prefill = NO_THINK_PREFILL if "channel" in template else ""
-
-    # mlx-lm's TokenizerWrapper.detokenizer is a property that builds a brand new
-    # streaming detokenizer on every access, and building one walks this model's
-    # 262144-entry vocabulary in Python. stream_generate reads it once per call,
-    # so a resident sidecar was paying ~134 ms of table building on every
-    # utterance, which was most of the correction stage's time to first token.
-    # A detokenizer's reset() clears the whole of its mutable state (offset,
-    # pending bytes, text, tokens) and the id-to-piece table it rebuilds is
-    # immutable, so handing back one reset instance is indistinguishable from
-    # handing back a fresh one.
-    shared_detokenizer = tokenizer.detokenizer
-
-    def detokenizer_property(_wrapper):
-        shared_detokenizer.reset()
-        return shared_detokenizer
-
-    type(tokenizer).detokenizer = property(detokenizer_property)
-
-    def build_prompt(text: str) -> str:
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": text})
-        rendered = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False
-        )
-        return rendered + think_prefill
-
-    def output_budget(text: str) -> int:
-        spoken = transcript_payload(text)
-        spoken_tokens = len(tokenizer.encode(spoken)) if spoken else 0
-        # A clean-up pass returns roughly the input again; allow headroom for
-        # expanded orthography, then stop.
-        budget = math.ceil(spoken_tokens * 1.8) + 24
-        return max(OUTPUT_TOKEN_FLOOR, min(OUTPUT_TOKEN_CEILING, budget))
+    def generate(prompt, budget):
+        return stream_generate(model, tokenizer, prompt, max_tokens=budget, sampler=sampler)
 
     def run(text: str) -> dict:
-        prompt = build_prompt(text)
-        max_tokens = output_budget(text)
-        started_at = time.perf_counter()
-        ttft_ms = None
-        pieces: list[str] = []
-        generated = 0
-        for chunk in stream_generate(
-            model, tokenizer, prompt, max_tokens=max_tokens, sampler=sampler
-        ):
-            if ttft_ms is None:
-                ttft_ms = (time.perf_counter() - started_at) * 1000
-            pieces.append(chunk.text)
-            generated = chunk.generation_tokens
-        latency_ms = (time.perf_counter() - started_at) * 1000
-        output = clean_output("".join(pieces))
-        return {
-            "ok": True,
-            "outputText": output,
-            "diagnostics": {
-                "latencyMilliseconds": latency_ms,
-                "timeToFirstTokenMilliseconds": ttft_ms or 0.0,
-                "tokensPerSecond": (
-                    generated / (latency_ms / 1000) if latency_ms > 0 else 0.0
-                ),
-                "generatedTokenCount": generated,
-                "inputCharacterCount": len(text),
-                "outputCharacterCount": len(output),
-                "maxOutputTokenBudget": max_tokens,
-            },
-        }
+        return normalize(text, tokenizer, generate)
 
-    ready_message = f"{args.model} loaded in {load_seconds:.1f}s"
+    ready_message = f"S1-mini by Superwhisper loaded in {load_seconds:.1f}s"
 
     for line in sys.stdin:
         line = line.strip()

@@ -1,10 +1,26 @@
 # Phonon
 
-Open-source voice typing for macOS. Fast, local, and sovereign.
+Local customization of Phonon 0.1.7: Parakeet dictation with optional **S1-mini by Superwhisper** cleanup.
+
+Use **Phonon Local → Settings → AI cleanup**. On cleans English transcripts; off uses Parakeet alone and unloads the cleanup process. The choice is saved and changes wait for the current dictation to finish. This build shares your Phonon settings, history, and dictionary; run only one copy at a time.
+
+S1-mini uses the model's exact trained prompt, with thinking disabled. Long transcripts are split at sentence or word boundaries into at most 768 transcript tokens per model request. If a request hits its output cap or returns blank, that section keeps its original transcript. A single oversized unbroken word also passes through unchanged. Cleanup time still grows with transcript length; this does not change Parakeet's audio handling.
+
+This model supports English cleanup and does not accept Phonon's screen-context or fuzzy dictionary prompts. Screen context is disabled in this build. Explicit dictionary replacements still run when cleanup is on.
+
+**Dictionary recognition** in Settings is an independent, experimental ASR option. Spelling terms (entries without a replacement) are tokenized with Parakeet's own tokenizer and receive bounded bonuses during final greedy TDT decoding. Blank predictions and duration scores are unchanged. Live preview remains stock Parakeet. Changes to Dictionary or the switch apply to the next final pass without restarting. This works with AI cleanup either on or off; recognized terms regain their dictionary capitalization, without replacing sound-alike phrases such as “phone on.” See [the test guide](docs/DICTIONARY_TEST.md).
+
+Build the separate local app (requires Rust, Swift, uv, and a persistent signing certificate):
+
+```bash
+bash scripts/package-local.sh
+```
+
+The result is `bar/dist/Phonon Local.app`. The local wrapper uses the certificate fingerprint saved in the git-ignored `.phonon-local-signing-identity`, or an explicit `PHONON_CODESIGN_IDENTITY`. It refuses ad hoc signing. Use the same certificate and bundle ID across updates so macOS can recognize the app; changing from the old ad hoc builds may require one final permission setup. This is an Apple Development-signed local build, separate from the notarized upstream release. See [local signing and permission recovery](docs/LOCAL_BUILD.md#signing-and-permissions).
 
 [Website](https://phonon.sh) · [Distribution plan](DISTRIBUTION.md)
 
-## Install
+## Upstream installation (without these changes)
 
 ```bash
 brew install --cask infatoshi/phonon/phonon
@@ -21,18 +37,12 @@ installation. To build locally instead, use
 ## Pipeline
 
 ```
-mic → Parakeet ASR → dictionary retrieval → Gemma correction → clipboard / type
+mic → Parakeet ASR → optional S1-mini by Superwhisper cleanup → clipboard / type
 ```
 
-The runtime requires and loads two weight streams in parallel:
-**asr ∥ llm**. The single startup loader reaches 100% only after Parakeet
-transcribes the bundled fixture through batch and streaming ASR, that transcript
-survives a round trip through the correction model, and a representative
-technical correction succeeds. Phonon does not expose an ASR-only mode.
+Parakeet warms batch and streaming ASR. When AI cleanup is on, the loader also waits for the correction model and a transcript-cleanup smoke test. When off, only Parakeet is needed. The engine command `{"cmd":"set_cleanup","enabled":false}` changes the live mode; `PHONON_AI_CLEANUP=0` overrides startup for command-line use.
 
-The correction stage is `sidecar/polish_server.py`: `mlx-community/gemma-4-e2b-it-4bit`
-on `mlx-lm`, run locally through `uv`. It is a pipeline stage, not a provider
-setting, and there is no way to point it at a remote model.
+The correction stage is `sidecar/polish_server.py`: S1-mini by Superwhisper, converted to MLX 4-bit by `mlx-community/S1-mini-MLX-4bit`, pinned to revision `5cbd7aec3401144f88a331d385c40b65fd2548eb`. It runs locally via `mlx-lm==0.31.3` and `uv`. Gemma is not loaded by this build.
 
 ## Build from source
 
@@ -174,7 +184,7 @@ bar/                   SwiftPM native Home/History/Dictionary/Settings app + flo
 sidecar/asr_server.py
 sidecar/polish_server.py
 assets/english_words.txt
-prompts/polish_v2.txt
+prompts/s1_mini.txt
 ```
 
 ## License

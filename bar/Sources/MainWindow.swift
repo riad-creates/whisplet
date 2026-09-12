@@ -426,7 +426,7 @@ struct DictionaryView: View {
                         LabeledContent("Other spoken forms") {
                             TextField("Comma separated", text: $spokenForms).frame(width: 280)
                         }
-                        Text("Leave replacement empty for a spelling term. Add a replacement when a spoken form should deterministically become different written text.")
+                        Text("Spelling terms guide final speech recognition when Dictionary recognition is on in Settings. Leave replacement empty for a spelling term. Replacements change text after recognition.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         HStack {
@@ -492,16 +492,29 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 SettingsSection("Dictation") {
                     ToggleRow(
+                        title: "AI cleanup",
+                        detail: "S1-mini by Superwhisper cleans up English transcripts. Off uses Parakeet alone and unloads the cleanup model. Changes apply after the current dictation finishes.",
+                        isOn: settingBinding(\.aiCleanup)
+                    )
+                    Divider()
+                    ToggleRow(
                         title: "Streaming",
                         detail: "Produce acoustic partials while you speak.",
                         isOn: settingBinding(\.streaming)
                     )
                     Divider()
                     ToggleRow(
+                        title: "Dictionary recognition",
+                        detail: "Experimental: prefer spelling terms from Dictionary in the final transcript. Turn off to compare. Applies to the next final pass; live preview is unchanged.",
+                        isOn: settingBinding(\.dictionaryRecognition)
+                    )
+                    Divider()
+                    ToggleRow(
                         title: "Screen context",
-                        detail: "Run local OCR and use only relevant dictionary terms.",
+                        detail: "Unavailable with S1-mini: cleanup uses the transcript alone.",
                         isOn: settingBinding(\.screenContext)
                     )
+                    .disabled(true)
                     Divider()
                     ToggleRow(
                         title: "Local history",
@@ -731,7 +744,7 @@ struct PrivacyChoiceView: View {
             Text("What Phonon may keep")
                 .font(.title2.bold())
             Text(
-                "Dictation runs entirely on this Mac either way. These two features store or read more than the transcript, so they start off."
+                "Dictation runs entirely on this Mac. Saving recordings is optional and starts off."
             )
             .foregroundStyle(.secondary)
 
@@ -746,14 +759,15 @@ struct PrivacyChoiceView: View {
                 ToggleRow(
                     title: "Read the active window",
                     detail:
-                        "Run local OCR on the frontmost window to spell technical terms correctly. Nothing leaves the Mac.",
+                        "Unavailable with S1-mini: cleanup uses the transcript alone.",
                     isOn: $screenContext
                 )
+                .disabled(true)
             }
             .padding(14)
             .background(EmberTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
 
-            Text("Both can be changed any time in Settings, and History has a Clear all button.")
+            Text("Recording retention can be changed in Settings, and History has a Clear all button.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

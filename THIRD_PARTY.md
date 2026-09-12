@@ -14,6 +14,8 @@ still downloaded into the user's normal caches on first launch.
 
 ## Parakeet TDT 0.6B v2
 
+The experimental `sidecar/dictionary_bias.py` final-transcript decoder adapts the greedy TDT loop from [parakeet-mlx 0.5.2](https://github.com/senstella/parakeet-mlx), licensed Apache-2.0. Its license is retained at [third_party/parakeet-mlx/LICENSE](third_party/parakeet-mlx/LICENSE) and bundled under `Contents/Resources/licenses/parakeet-mlx/`. Changes add dictionary prefix tracking, bounded token bonuses, and original-distribution confidence calculation in float32. This is a custom experiment, not NVIDIA's GPU-PB implementation.
+
 - Source: <https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v2>
 - Upstream model: NVIDIA Parakeet TDT 0.6B v2
 - License: CC-BY-4.0
@@ -21,7 +23,19 @@ still downloaded into the user's normal caches on first launch.
 - Size: 2,471,559,904 bytes
 - SHA-256: `b958c37a6baa6874a279108755c8f2818e27bf647d72d54800a234a421341dfe`
 
+## S1-mini by Superwhisper
+
+- Original model and documentation: https://huggingface.co/superwhisper/s1-mini
+- MLX 4-bit conversion: https://huggingface.co/mlx-community/S1-mini-MLX-4bit
+- Pinned conversion revision: `5cbd7aec3401144f88a331d385c40b65fd2548eb`
+- License: Apache 2.0 with an additional model-name and attribution term.
+- Full license: [third_party/s1-mini/LICENSE](third_party/s1-mini/LICENSE), also bundled in the app under `Contents/Resources/licenses/s1-mini/`.
+
+This integration identifies the model as **S1-mini by Superwhisper**. The MLX conversion is provided by mlx-community. Model weights download into the Hugging Face cache and are not committed or included in the app bundle.
+
 ## Fluid-1
+
+The following FluidVoice entry describes the optional legacy developer benchmark only, not this build's normal cleanup pipeline.
 
 - Source: <https://huggingface.co/ALTICDEV/FLUID-1>
 - License: AGPL-3.0

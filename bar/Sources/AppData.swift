@@ -14,6 +14,8 @@ struct NativeSettings: Codable, Equatable {
 
     var schemaVersion: Int
     var streaming: Bool
+    var aiCleanup: Bool
+    var dictionaryRecognition: Bool
     var localHistory: Bool
     var screenContext: Bool
     var microphonePriority: [String]
@@ -26,6 +28,8 @@ struct NativeSettings: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case streaming
+        case aiCleanup = "ai_cleanup"
+        case dictionaryRecognition = "dictionary_recognition"
         case localHistory = "local_history"
         case screenContext = "screen_context"
         case microphonePriority = "microphone_priority"
@@ -39,6 +43,8 @@ struct NativeSettings: Codable, Equatable {
     init(
         schemaVersion: Int = NativeSettings.currentSchemaVersion,
         streaming: Bool = true,
+        aiCleanup: Bool = true,
+        dictionaryRecognition: Bool = true,
         localHistory: Bool = false,
         screenContext: Bool = false,
         microphonePriority: [String] = [],
@@ -50,6 +56,8 @@ struct NativeSettings: Codable, Equatable {
     ) {
         self.schemaVersion = schemaVersion
         self.streaming = streaming
+        self.aiCleanup = aiCleanup
+        self.dictionaryRecognition = dictionaryRecognition
         self.localHistory = localHistory
         self.screenContext = screenContext
         self.microphonePriority = microphonePriority
@@ -65,6 +73,8 @@ struct NativeSettings: Codable, Equatable {
         let storedSchema = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         schemaVersion = storedSchema
         streaming = try values.decodeIfPresent(Bool.self, forKey: .streaming) ?? true
+        aiCleanup = try values.decodeIfPresent(Bool.self, forKey: .aiCleanup) ?? true
+        dictionaryRecognition = try values.decodeIfPresent(Bool.self, forKey: .dictionaryRecognition) ?? true
         // Before schema 2 both defaulted to on, so an absent key on an existing
         // install means the owner was running with it enabled.
         let legacyDefault = storedSchema < 2
@@ -252,6 +262,9 @@ struct NativeUsageStats: Equatable {
 
 enum PhononDataPaths {
     static func supportDirectory(fileManager: FileManager = .default) -> URL {
+        if let path = ProcessInfo.processInfo.environment["PHONON_DATA_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return base.appendingPathComponent("Phonon", isDirectory: true)

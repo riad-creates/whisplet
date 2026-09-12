@@ -452,6 +452,10 @@ pub struct UsageStats {
 pub struct SettingsFile {
     pub schema_version: u32,
     #[serde(default = "default_true")]
+    pub ai_cleanup: bool,
+    #[serde(default = "default_true")]
+    pub dictionary_recognition: bool,
+    #[serde(default = "default_true")]
     pub streaming: bool,
     #[serde(default = "default_true")]
     pub local_history: bool,
@@ -469,6 +473,8 @@ impl Default for SettingsFile {
     fn default() -> Self {
         Self {
             schema_version: DATA_SCHEMA_VERSION,
+            ai_cleanup: true,
+            dictionary_recognition: true,
             streaming: true,
             local_history: true,
             screen_context: true,
@@ -509,6 +515,9 @@ impl SettingsFile {
 }
 
 pub fn app_support_dir() -> Result<PathBuf> {
+    if let Some(directory) = std::env::var_os("PHONON_DATA_DIR") {
+        return Ok(PathBuf::from(directory));
+    }
     let home = std::env::var_os("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home)
         .join("Library")

@@ -48,6 +48,13 @@ final class PreviewRevisionPolicyTests: XCTestCase {
             ShortcutPolicy.allows(mode: "fn_and_control_space", source: "right-option"))
     }
 
+    func testExplicitRecordingMenuWorksRegardlessOfShortcutSelection() {
+        for mode in ["both", "right_option", "fn", "control_space", "fn_and_control_space"] {
+            XCTAssertTrue(ShortcutPolicy.allows(mode: mode, source: "menu"))
+            XCTAssertFalse(ShortcutPolicy.allows(mode: mode, source: "unknown"))
+        }
+    }
+
     @MainActor
     func testNativeModelLoaderTracksStreamsAndMonotonicProgress() {
         let state = ModelStartupState()
@@ -173,6 +180,31 @@ final class PreviewRevisionPolicyTests: XCTestCase {
 
         XCTAssertEqual(idle.minY, expanded.minY)
         XCTAssertEqual(idle.midX, expanded.midX)
+    }
+
+    func testPillClearsBottomDockOnOffsetDisplay() {
+        let screen = NSRect(x: -1920, y: -1080, width: 1920, height: 1080)
+        let usable = NSRect(x: -1920, y: -996, width: 1920, height: 972)
+        let frame = PanelGeometry.restingFrame(
+            screen: screen, visibleFrame: usable, size: NSSize(width: 200, height: 52))
+
+        XCTAssertEqual(frame.minY, usable.minY + PanelGeometry.bottomInset)
+        XCTAssertEqual(frame.midX, screen.midX)
+        XCTAssertTrue(usable.contains(frame))
+    }
+
+    func testSideDockDoesNotRaisePillAndAutoHideReturnsItToBottom() {
+        let screen = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        for usable in [
+            NSRect(x: 80, y: 0, width: 1432, height: 950),
+            NSRect(x: 0, y: 0, width: 1432, height: 950),
+            NSRect(x: 0, y: 0, width: 1512, height: 950),
+        ] {
+            let frame = PanelGeometry.restingFrame(
+                screen: screen, visibleFrame: usable, size: NSSize(width: 200, height: 52))
+            XCTAssertEqual(frame.minY, PanelGeometry.bottomInset)
+            XCTAssertEqual(frame.midX, screen.midX)
+        }
     }
 
     func testPanelFollowsWhicheverScreenItIsGiven() {
